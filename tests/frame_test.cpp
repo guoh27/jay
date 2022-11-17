@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2020 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
+// Copyright (c) 2022 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
 //
-// Distributed under the MIT License, Version 1.0. (See accompanying
+// Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 // Official repository: https://github.com/bjorn-jaes/jay
@@ -28,9 +28,50 @@ TEST(Jay_Frame_Test, Jay_Frame_Create_Test)
 
   ASSERT_EQ(f.header.id(), 0x1DAFFF02);
   ASSERT_EQ(f.header.payload_length(), 2);
-  ASSERT_EQ(f.payload.size(), 8);
+  ASSERT_EQ(f.payload.size(), 8); //Would it be better if it was 2?
   ASSERT_EQ(f.payload[0], 0xFF);
   ASSERT_EQ(f.payload[1], 0x00);
+  ///TODO: Would checking any further result in segmentation fault, or are there empty values here
+
+  auto addr_req = jay::frame::make_address_request();
+  ASSERT_TRUE(addr_req.header.is_request());
+  ASSERT_EQ(addr_req.header.id(), 0x18'EA'FF'FE);
+  ASSERT_EQ(addr_req.header.priority(), 6);
+  ASSERT_EQ(addr_req.header.data_page(), false);
+  ASSERT_EQ(addr_req.header.pdu_format(), jay::PF_REQUEST);
+  ASSERT_EQ(addr_req.header.pdu_specific(), J1939_NO_ADDR);
+  ASSERT_EQ(addr_req.header.pgn(), J1939_PGN_REQUEST | J1939_NO_ADDR);
+  ASSERT_EQ(addr_req.header.source_adderess(), J1939_IDLE_ADDR);
+  ASSERT_EQ(addr_req.header.payload_length(), 3);
+  ASSERT_EQ(addr_req.payload[0], 0x00);
+  ASSERT_EQ(addr_req.payload[1], 0xEE);
+  ASSERT_EQ(addr_req.payload[2], 0x00);
+
+  ///TODO: Add static asserts regarding less then 8 size on payload for make functions
+
+  auto cant_claim = jay::frame::make_cannot_claim(jay::name{0x00'00'00'00'00'00'00'00});
+
+  ASSERT_TRUE(cant_claim.header.is_claim());
+  ASSERT_EQ(cant_claim.header.id(), 0x18'EE'FF'FE);
+  ASSERT_EQ(cant_claim.header.priority(), 6);
+  ASSERT_EQ(cant_claim.header.data_page(), false);
+  ASSERT_EQ(cant_claim.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
+  ASSERT_EQ(cant_claim.header.pdu_specific(), J1939_NO_ADDR);
+  ASSERT_EQ(cant_claim.header.pgn(), J1939_PGN_ADDRESS_CLAIMED | J1939_NO_ADDR);
+  ASSERT_EQ(cant_claim.header.source_adderess(), J1939_IDLE_ADDR);
+  ASSERT_EQ(cant_claim.header.payload_length(), 8);
+
+  auto claim = jay::frame::make_address_claim(jay::name{00}, 0xAA);
+
+  ASSERT_TRUE(claim.header.is_claim());
+  ASSERT_EQ(claim.header.id(), 0x18'EE'FF'AA);
+  ASSERT_EQ(claim.header.priority(), 6);
+  ASSERT_EQ(claim.header.data_page(), false);
+  ASSERT_EQ(claim.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
+  ASSERT_EQ(claim.header.pdu_specific(), J1939_NO_ADDR);
+  ASSERT_EQ(claim.header.pgn(), J1939_PGN_ADDRESS_CLAIMED | J1939_NO_ADDR);
+  ASSERT_EQ(claim.header.source_adderess(), 0xAA);
+  ASSERT_EQ(claim.header.payload_length(), 8);
 }
 
 TEST(Jay_Frame_Test, Jay_Frame_Sync_Send_Test)
@@ -66,7 +107,7 @@ TEST(Jay_Frame_Test, Jay_Frame_Sync_SendTo_Test)
   canary::raw::endpoint const ep1{canary::get_interface_index("vcan1")};
   canary::raw::endpoint ep2;
 
-  jay::frame out_frame{{3, false, 0xBB, 0xFE, 0xFE, 8}, {0xFA, 0xFA, 0xFA, 0xFA, 0xFF, 0xFF, 0xFF, 0xFF}};
+  jay::frame out_frame{{3, false, 0xBB, 0xFE, 0xFE, 7}, {0xFA, 0xFA, 0xFA, 0xFF, 0xFF, 0xFF, 0xFF}};
   sock1.send_to(canary::net::buffer(&out_frame, sizeof(out_frame)), ep1);
 
   jay::frame in_frame{};

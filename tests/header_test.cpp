@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2020 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
+// Copyright (c) 2022 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
 //
-// Distributed under the MIT License, Version 1.0. (See accompanying
+// Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 // Official repository: https://github.com/bjorn-jaes/jay
@@ -26,10 +26,10 @@ TEST(Jay_Header_Test, Jay_Header_Getters_Tests)
   ASSERT_EQ(header.data_page(), true);
   ASSERT_EQ(header.pdu_format(), 0xAF);
   ASSERT_EQ(header.pdu_specific(), 0xFF);
+  ASSERT_EQ(header.pgn(), 0x00'01'AF'FF);
   ASSERT_EQ(header.source_adderess(), 0x02);
   ASSERT_EQ(header.payload_length(), 1);
 
-  ///TODO: Check if this is correct
   ASSERT_FALSE(header.is_broadcast());
 
   jay::frame_header header1{10, 0x0FAF0, 0x64, 5};
@@ -39,8 +39,11 @@ TEST(Jay_Header_Test, Jay_Header_Getters_Tests)
   ASSERT_EQ(header1.data_page(), false);
   ASSERT_EQ(header1.pdu_format(), 0xFA);
   ASSERT_EQ(header1.pdu_specific(), 0xF0);
+  ASSERT_EQ(header1.pgn(), 0x00'00'FA'F0);
   ASSERT_EQ(header1.source_adderess(), 0x64);
   ASSERT_EQ(header1.payload_length(), 5);
+
+  ASSERT_TRUE(header1.is_broadcast());
 
   jay::frame_header header2{0xFD'FF'FF'FF};
 
@@ -49,8 +52,11 @@ TEST(Jay_Header_Test, Jay_Header_Getters_Tests)
   ASSERT_EQ(header2.data_page(), true);
   ASSERT_EQ(header2.pdu_format(), 0xFF);
   ASSERT_EQ(header2.pdu_specific(), 0xFF);
+  ASSERT_EQ(header2.pgn(), 0x00'01'FF'FF);
   ASSERT_EQ(header2.source_adderess(), 0xFF);
   ASSERT_EQ(header2.payload_length(), 0);
+
+  ASSERT_TRUE(header2.is_broadcast());
 }
 
 TEST(Jay_Header_Test, Jay_Header_Setters_Tests)

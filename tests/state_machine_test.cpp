@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2020 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
+// Copyright (c) 2022 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
 //
-// Distributed under the MIT License, Version 1.0. (See accompanying
+// Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 // Official repository: https://github.com/bjorn-jaes/jay
@@ -27,31 +27,26 @@ protected:
   // 
   StateMachineTest()
   {
+    ///Cout used for debugging
     addr_claimer.set_callbacks(jay::address_claimer::callbacks{
     [this](jay::name name, uint8_t address) -> void {
-      std::cout << std::hex << static_cast<uint64_t>(name) << " gained address: " << address << std::endl;
-      //logger_->info("{0:x} gained address: {1:x}", static_cast<uint64_t>(name), address);
-      j1939_network.insert(static_cast<uint64_t>(name), address);
+      //std::cout << std::hex << (name) << " gained address: " << std::hex << address << std::endl;
+      j1939_network.insert(name, address);
     },
     [this](jay::name name) -> void {
-      std::cout << std::hex << static_cast<uint64_t>(name) << " lost address" << std::endl;
-      //logger_->info("{0:x} lost address", static_cast<uint64_t>(name));
-      j1939_network.release(static_cast<uint64_t>(name));
-      ///TODO: Check if this function is needed
+      //std::cout << std::hex << (name) << " lost address" << std::endl;
+      j1939_network.release((name));
     },
     [this]() -> void {
-      std::cout << "Starting address claim" << std::endl;
-      //logger_->info("Starting address claim");
+      //std::cout << std::hex << name << " starting claim" << std::endl;
     },
-    [this](jay::frame frame) -> void {
-      std::cout << "Sending claim: " << frame.to_string() << std::endl;
-      //logger_->info("Sending claim: {}", frame.to_string());
-      frame_queue.push(frame);
+    [this](jay::name name, std::uint8_t address) -> void {
+      //std::cout << std::hex << name << " claiming address: " << std::hex << address << std::endl;
+      claim_queue.push({name, address});
     },
-    [this](jay::frame frame) -> void {
-      std::cout << "Sending cannot claim: {} " << frame.to_string() << std::endl;
-      //logger_->info("Sending cannot claim: {}", frame.to_string());
-      frame_queue.push(frame);
+    [this](jay::name name) -> void {
+      //std::cout << std::hex << name << " cant claim address" << std::endl;
+      cannot_claim_queue.push(name);
     }});
   }
 
@@ -63,7 +58,9 @@ protected:
   // 
   virtual void SetUp() override
   {
-    frame_queue = std::queue<jay::frame>{};
+    //Clear queues
+    claim_queue = std::queue<std::pair<jay::name, std::uint8_t>>{};
+    cannot_claim_queue = std::queue<jay::name>{};
   }
 
   // 
@@ -76,7 +73,8 @@ public:
   uint64_t local_name{0xFFU};
   uint8_t address{0xAAU};
   jay::network j1939_network{};
-  std::queue<jay::frame> frame_queue{};
+  std::queue<std::pair<jay::name, std::uint8_t>> claim_queue{};
+  std::queue<jay::name> cannot_claim_queue{};
 
   jay::address_claimer addr_claimer{local_name};
   boost::sml::sm<jay::address_claimer, boost::sml::testing> state_machine{addr_claimer, j1939_network};
@@ -89,20 +87,39 @@ TEST_F(StateMachineTest, Jay_State_Machine_NoAddress_Test)
   state_machine.set_current_states(boost::sml::state<jay::address_claimer::st_no_address>);
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_no_address>));
 
-  //No address request created
+  //No address, trigger cannot claim, should return a claim frame with idle address
+  //which is the same as a cannot claim address frame
   state_machine.process_event(jay::address_claimer::ev_address_request{});
-  ASSERT_EQ(frame_queue.size(), 0);
+  ASSERT_EQ(cannot_claim_queue.size(), 1);
+  ASSERT_EQ(cannot_claim_queue.front(), local_name);
+  cannot_claim_queue.pop();
+
+  auto addesses_used = j1939_network.address_count();
+  auto names_inserted = j1939_network.name_count();
+
+  //Process timeout, which should do nothing
+  state_machine.process_event(jay::address_claimer::ev_timeout{});
+  ASSERT_EQ(claim_queue.size(), 0);
+  ASSERT_EQ(cannot_claim_queue.size(), 0);
+  ASSERT_EQ(j1939_network.address_count(), addesses_used);
+  ASSERT_EQ(j1939_network.name_count(), names_inserted);
+
+  //Process address claim, which should do nothing
+  state_machine.process_event(jay::address_claimer::ev_address_claim{0xAA, address});
+  ASSERT_EQ(claim_queue.size(), 0);
+  ASSERT_EQ(cannot_claim_queue.size(), 0);
+  ASSERT_EQ(j1939_network.address_count(), addesses_used);
+  ASSERT_EQ(j1939_network.name_count(), names_inserted);
 
   //Start address claim - creates address claim frame
   state_machine.process_event(jay::address_claimer::ev_start_claim{address});
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
 
   //Check address claim frame
-  auto frame = frame_queue.front();
-  ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
-  ASSERT_EQ(frame.header.pdu_specific(), jay::ADDRESS_GLOBAL);
-  ASSERT_EQ(frame.header.source_adderess(), address);
-  frame_queue.pop();
+  auto claim_pair = claim_queue.front();
+  ASSERT_EQ(claim_pair.first, local_name);
+  ASSERT_EQ(claim_pair.second, address);
+  claim_queue.pop();
 
   //Change state back
   state_machine.set_current_states(boost::sml::state<jay::address_claimer::st_no_address>);
@@ -110,48 +127,38 @@ TEST_F(StateMachineTest, Jay_State_Machine_NoAddress_Test)
 
   for(uint8_t i = 0U; i < 200; i++)
   { ///Fill network
-    j1939_network.insert(static_cast<uint64_t>(i), i);
+    j1939_network.insert(i, i);
   }
-
-  state_machine.process_event(jay::address_claimer::ev_address_request{});
-  ASSERT_EQ(frame_queue.size(), 0);
 
   //Start address claim - but preffered address cant be claimed address required
   state_machine.process_event(jay::address_claimer::ev_start_claim{address});
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
 
   //Check address claim frame
-  frame = frame_queue.front();
-  ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
-  ASSERT_EQ(frame.header.pdu_specific(), jay::ADDRESS_GLOBAL);
-  ASSERT_EQ(frame.header.source_adderess(), 200);
-  frame_queue.pop();
+  claim_pair = claim_queue.front();
+  ASSERT_EQ(claim_pair.first, local_name);
+  ASSERT_EQ(claim_pair.second, 200);
+  claim_queue.pop();
 
   //Change state back
   state_machine.set_current_states(boost::sml::state<jay::address_claimer::st_no_address>);
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_no_address>));
 
-  for(uint8_t i = 200; i < jay::ADDRESS_NULL; i++)
+  for(uint8_t i = 200; i < J1939_NO_ADDR; i++)
   { ///Fill network
-    j1939_network.insert(static_cast<uint64_t>(i), i);
+    j1939_network.insert(i, i);
   }
 
   ASSERT_TRUE(j1939_network.full());
 
-  //Creates cannot claim address frame
-  state_machine.process_event(jay::address_claimer::ev_address_request{});
-  ASSERT_EQ(frame_queue.size(), 1);
-
-  //Check cannot claim address frame
-  frame = frame_queue.front();
-  ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
-  ASSERT_EQ(frame.header.pdu_specific(), jay::ADDRESS_GLOBAL);
-  ASSERT_EQ(frame.header.source_adderess(), jay::ADDRESS_NULL);
-  frame_queue.pop();
-
   //Try to start claiming
   state_machine.process_event(jay::address_claimer::ev_start_claim{address}); // fails to change
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_no_address>));
+
+  //Sends cannot claim
+  ASSERT_EQ(cannot_claim_queue.size(), 1);
+  ASSERT_EQ(cannot_claim_queue.front(), local_name);
+  cannot_claim_queue.pop();
 }
 
 TEST_F(StateMachineTest, Jay_State_Machine_Claiming_Test)
@@ -165,87 +172,101 @@ TEST_F(StateMachineTest, Jay_State_Machine_Claiming_Test)
   //Insert names into network
   for(uint8_t i = 0U; i < 0xB5U; i++)
   { ///Fill network
-    j1939_network.insert(static_cast<uint64_t>(i), i);
+    j1939_network.insert(i, i);
   }
 
-  //Change to claiming though name is allready taken so change address to available
+  //Change to claiming though name is already taken so change address to available
   state_machine.process_event(jay::address_claimer::ev_start_claim{address});
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
-  auto frame = frame_queue.front();
-  ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM); //Needed?
-  ASSERT_EQ(frame.header.pdu_specific(), jay::ADDRESS_GLOBAL);
-  ASSERT_EQ(frame.header.source_adderess(), 0xB5U);
-  frame_queue.pop();
+  auto claim_pair = claim_queue.front();
+  ASSERT_EQ(claim_pair.first, local_name);
+  ASSERT_EQ(claim_pair.second, 0xB5U);
+  claim_queue.pop();
 
-  //Non competing address claim
+  //Non competing address claim, no response needed
   state_machine.process_event(jay::address_claimer::ev_address_claim{0x0, 150});
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
-  ASSERT_EQ(frame_queue.size(), 0);
+  ASSERT_EQ(claim_queue.size(), 0);
 
   //Get competing address claim from device with higher priority
-  j1939_network.insert(static_cast<uint64_t>(0x0), 0xB5U);
+  j1939_network.insert(0x0U, 0xB5U);
   state_machine.process_event(jay::address_claimer::ev_address_claim{0x0, 0xB5U});
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
-  frame = frame_queue.front();
-  ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
-  ASSERT_EQ(frame.header.pdu_specific(), jay::ADDRESS_GLOBAL);
-  ASSERT_EQ(frame.header.source_adderess(), 0xB6U); //Create new address claim with new address
-  frame_queue.pop();
+  
+  ASSERT_EQ(claim_queue.size(), 1);
+  claim_pair = claim_queue.front();
+  ASSERT_EQ(claim_pair.first, local_name);
+  ASSERT_EQ(claim_pair.second, 0xB6U); //Create new address claim with new address
+  claim_queue.pop();
   
   //Get competing address claim from device with lower priority
   state_machine.process_event(jay::address_claimer::ev_address_claim{0xFFFF, 0xB6U});
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
-  frame = frame_queue.front();
-  ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
-  ASSERT_EQ(frame.header.pdu_specific(), jay::ADDRESS_GLOBAL);
-  ASSERT_EQ(frame.header.source_adderess(), 0xB6U); //Claim own address again
-  frame_queue.pop();
 
-  //Dont respond to request when claiming?
+  ASSERT_EQ(claim_queue.size(), 1);
+  claim_pair = claim_queue.front();
+  ASSERT_EQ(claim_pair.first, local_name);
+  ASSERT_EQ(claim_pair.second, 0xB6U); //Claim own address again
+  claim_queue.pop();
+
+  //Respond to request when claiming
   state_machine.process_event(jay::address_claimer::ev_address_request{});
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
-  ASSERT_EQ(frame_queue.size(), 0);
+  ASSERT_EQ(claim_queue.size(), 1);
+  claim_pair = claim_queue.front();
+  ASSERT_EQ(claim_pair.first, local_name);
+  ASSERT_EQ(claim_pair.second, 0xB6U);
+  claim_queue.pop();
 
-  //Has address
+  //Timout event into Has address state
   state_machine.process_event(jay::address_claimer::ev_timeout{});
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_has_address>));
+  ASSERT_TRUE(j1939_network.in_network(local_name));
 
+  //Change to no address state and manualy realease name from network
   j1939_network.release(local_name);
-
-  //Change back
   state_machine.set_current_states(boost::sml::state<jay::address_claimer::st_no_address>);
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_no_address>));
 
+  //Should not send cannot claim as addresses are available
+  ASSERT_EQ(cannot_claim_queue.size(), 0);
+
+  //Start claiming
   state_machine.process_event(jay::address_claimer::ev_start_claim{0xAA});
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
-  frame = frame_queue.front();
-  ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
-  ASSERT_EQ(frame.header.pdu_specific(), jay::ADDRESS_GLOBAL);
-  ASSERT_EQ(frame.header.source_adderess(), 0xB6U); //First available
-  frame_queue.pop();
+  
+  ASSERT_EQ(claim_queue.size(), 1);
+  claim_pair = claim_queue.front();
+  ASSERT_EQ(claim_pair.first, local_name);
+  ASSERT_EQ(claim_pair.second, 0xB6U); //First available
+  claim_queue.pop();
 
-  //Fill remainging addresses
-  for(uint8_t i = 0xB6U; i < jay::ADDRESS_NULL; i++)
+  //Fill remainging addresses, untill none are available
+  for(uint8_t i = 0xB6U; i < J1939_IDLE_ADDR; i++)
   { ///Fill network
-    j1939_network.insert(static_cast<uint64_t>(i), i);
+    j1939_network.insert(i, i);
     state_machine.process_event(jay::address_claimer::ev_address_claim{i, i});
-    frame = frame_queue.front();
-    ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
-    ASSERT_EQ(frame.header.pdu_specific(), jay::ADDRESS_GLOBAL);
-    ASSERT_EQ(frame.header.source_adderess(), i + 1); //next address
-    frame_queue.pop();
   }
+
+  ASSERT_EQ(claim_queue.size(), J1939_IDLE_ADDR - 0xB6U - 1);
+
+  for(uint8_t i = 0xB6U; i < J1939_IDLE_ADDR - 1; i++)
+  { //Claiming until max address reached
+    claim_pair = claim_queue.front();
+    ASSERT_EQ(claim_pair.first, local_name);
+    ASSERT_EQ(claim_pair.second, i + 1);//next address
+    claim_queue.pop();
+  }
+
+  ASSERT_EQ(cannot_claim_queue.size(), 1);
+  ASSERT_EQ(cannot_claim_queue.front(), local_name);
+  cannot_claim_queue.pop();
 
   ASSERT_TRUE(j1939_network.full());
 
-  //test state change
-  state_machine.process_event(jay::address_claimer::ev_timeout{});
+  //No address available means falling to no address state
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_no_address>));
 
-  frame = frame_queue.back();
-  ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
-  ASSERT_EQ(frame.header.pdu_specific(), jay::ADDRESS_GLOBAL);
-  ASSERT_EQ(frame.header.source_adderess(), jay::ADDRESS_NULL);
 }
 
 TEST_F(StateMachineTest, Jay_State_Machine_HasAddress_Test)
@@ -256,12 +277,12 @@ TEST_F(StateMachineTest, Jay_State_Machine_HasAddress_Test)
   //Change to claiming
   state_machine.process_event(jay::address_claimer::ev_start_claim{address});
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
-  auto frame = frame_queue.front();
-  ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
-  ASSERT_EQ(frame.header.pdu_specific(), jay::ADDRESS_GLOBAL);
-  ASSERT_EQ(frame.header.source_adderess(), address);
-  ASSERT_EQ(frame_queue.size(), 1);
-  frame_queue.pop();
+  
+  auto claim_pair = claim_queue.front();
+  ASSERT_EQ(claim_queue.size(), 1);
+  ASSERT_EQ(claim_pair.first, local_name);
+  ASSERT_EQ(claim_pair.second, address);
+  claim_queue.pop();
 
   //Change to has address, make sure that the address is set
   state_machine.process_event(jay::address_claimer::ev_timeout{});
@@ -271,27 +292,27 @@ TEST_F(StateMachineTest, Jay_State_Machine_HasAddress_Test)
   //Address request event
   state_machine.process_event(jay::address_claimer::ev_address_request{});
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_has_address>));
-  frame = frame_queue.front();
-  ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
-  ASSERT_EQ(frame.header.pdu_specific(), jay::ADDRESS_GLOBAL);
-  ASSERT_EQ(frame.header.source_adderess(), address);
-  ASSERT_EQ(frame_queue.size(), 1);
-  frame_queue.pop();
+  claim_pair = claim_queue.front();
+  ASSERT_EQ(claim_queue.size(), 1);
+  ASSERT_EQ(claim_pair.first, local_name);
+  ASSERT_EQ(claim_pair.second, address);
+  claim_queue.pop();
 
   //Non competing address claim
   state_machine.process_event(jay::address_claimer::ev_address_claim{0x0, 150});
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_has_address>));
-  ASSERT_EQ(frame_queue.size(), 0);
+  ASSERT_EQ(claim_queue.size(), 0);
 
   //Get competing address claim from device with higher priority
-  j1939_network.insert(static_cast<uint64_t>(170), 170);
+  j1939_network.insert(170, 170);
   state_machine.process_event(jay::address_claimer::ev_address_claim{170, 170});
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
-  frame = frame_queue.front();
-  ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
-  ASSERT_EQ(frame.header.pdu_specific(), jay::ADDRESS_GLOBAL);
-  ASSERT_EQ(frame.header.source_adderess(), 171); //Claim address one up if address is sent back propperly
-  frame_queue.pop();
+
+  claim_pair = claim_queue.front();
+  ASSERT_EQ(claim_queue.size(), 1);
+  ASSERT_EQ(claim_pair.first, local_name);
+  ASSERT_EQ(claim_pair.second, 171);
+  claim_queue.pop();
 
   //Change to has address, make sure that the address is set
   state_machine.process_event(jay::address_claimer::ev_timeout{});
@@ -301,23 +322,24 @@ TEST_F(StateMachineTest, Jay_State_Machine_HasAddress_Test)
   //Get competing address claim from device with lower priority
   state_machine.process_event(jay::address_claimer::ev_address_claim{0xFFFF, 171});
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_has_address>));
-  frame = frame_queue.front();
-  ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
-  ASSERT_EQ(frame.header.pdu_specific(), jay::ADDRESS_GLOBAL);
-  ASSERT_EQ(frame.header.source_adderess(), 171); //Claim own address again
-  frame_queue.pop();
+
+  claim_pair = claim_queue.front();
+  ASSERT_EQ(claim_queue.size(), 1);
+  ASSERT_EQ(claim_pair.first, local_name);
+  ASSERT_EQ(claim_pair.second, 171);
+  claim_queue.pop();
 
   //Fill remainging addresses
-  for(uint8_t i = 0; i < jay::ADDRESS_NULL; i++)
+  for(uint8_t i = 0; i < J1939_NO_ADDR; i++)
   { ///Fill network
-    j1939_network.insert(static_cast<uint64_t>(i), i);
+    j1939_network.insert(i, i);
   }
   
   state_machine.process_event(jay::address_claimer::ev_address_claim{0x0, 171});
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_no_address>));
-  frame = frame_queue.front();
-  ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
-  ASSERT_EQ(frame.header.pdu_specific(), jay::ADDRESS_GLOBAL);
-  ASSERT_EQ(frame.header.source_adderess(), jay::ADDRESS_NULL);
-  frame_queue.pop();
+  
+  //Sends cannot claim as no address is available
+  ASSERT_EQ(cannot_claim_queue.size(), 1);
+  ASSERT_EQ(cannot_claim_queue.front(), local_name);
+  cannot_claim_queue.pop();
 }

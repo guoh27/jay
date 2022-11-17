@@ -7,5 +7,10 @@
 # Official repository: https://github.com/bjorn-jaes/jay
 #
 
-add_executable(simple_example main.cpp j1939_connection.cpp)
-target_link_libraries(simple_example jay::jay)
+include(CMakeFindDependencyMacro)
+
+find_dependency(Boost COMPONENTS system)
+find_dependency(canary)
+find_dependency(Threads)
+
+include("${CMAKE_CURRENT_LIST_DIR}/jay-targets.cmake")

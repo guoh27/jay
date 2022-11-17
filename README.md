@@ -1,18 +1,24 @@
 # Jay
 
+Note this library is still in development. While its current state is usable there might be unknown bugs and I find the callback implementation to be slightly cumbersome, hopefuly I improve it in a later iteration. I also need to check for any memory leaks.
+
 ## Introduction
 
-**Jay** is a small, C++17 extention for [Canary](https://github.com/djarek/canary) that implements
-higher-layer [SEA J1939](https://en.wikipedia.org/wiki/SAE_J1939) protocol.
+**Jay** is a C++17 extention for [Canary](https://github.com/djarek/canary) that add
+higher-layer [SEA J1939](https://en.wikipedia.org/wiki/SAE_J1939) features.
 
 It its current state the library is inteded to be run on linux machines were in-cernel j1939 drivers are not included.
 As was my case when working with Jetson Nano machines and J1939.
 
 ## Dependencies
 
-**Jay** depends on [Canary](https://github.com/djarek/canary) as it provides the underlaying 
-[CAN bus](https://en.wikipedia.org/wiki/CAN_bus) implementation. Additionaly [Boost-Ext SML](https://github.com/boost-ext/sml)
+**Jay** depends on [Canary](https://github.com/djarek/canary) as it provides the underlaying raw
+[CAN bus](https://en.wikipedia.org/wiki/CAN_bus) asio sockets. Additionaly [Boost-Ext SML](https://github.com/boost-ext/sml)
 is used to implement a state machine for dynamic address managment.
+
+By default, Jay is not configured to use linux j1939.h instead defines its own compatible globals, 
+but can be configured to use them instead. The `LINUX_J1939` macro should make this possible. 
+Thought I need to test this.
 
 Running tests currently requires [GTest](https://github.com/google/googletest), 
 but I might change it to Boost.Core later to reduce the number of dependecies.
@@ -58,16 +64,17 @@ cmake ..
 make test
 ```
 
+Note that the test take some time to complete as testing timeout events adds a little over 1 min to testing.
+
 ## Documentation
-- Examples (TODO)
+- [Example](examples/main.cpp)
 - [API Reference - entities](doc/generated/standardese_entities.md)
 - [API Reference - files](doc/generated/standardese_files.md)
 
 ## Notes
 
 This library might have some conflicts with the [Kernel J1939](https://www.kernel.org/doc/html/latest/networking/j1939.html)
-implementation of linux. As a ECU address is used b the in-kernel system exclusivly. Some other information to note regarding
-the in-kernel system is that the mapping of connected devices is not exposed through any api currently as far as i know.
+implementation of linux. As one ECU address is used the by in-kernel address managment system exclusivly. Some other information to note regarding the in-kernel system is that the mapping of connected devices is not exposed through any api currently as far as i know.
 Thought can-utils does include the j1939acd tool, so it can be used as code example or as default Address Claiming daemon.
 The current implementation is on top of Raw CAN. In the future it would be nice if I could find some way of integrating the current
 code with the linux J1939.

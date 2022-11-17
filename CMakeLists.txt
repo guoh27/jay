@@ -1,7 +1,7 @@
 #
 # Copyright (c) 2020 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
 #
-# Distributed under the MIT License, Version 1.0. (See accompanying
+# Distributed under the Boost Software License, Version 1.0. (See accompanying
 # file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 #
 # Official repository: https://github.com/bjorn-jaes/jay
@@ -20,12 +20,13 @@ string(APPEND INCLUDE_DIR "include")
 # ============================================================================================
 # Project Description
 # ============================================================================================
-project(jay VERSION 0.1 DESCRIPTION "J1939 library" LANGUAGES CXX)
+project(jay VERSION 0.2 DESCRIPTION "J1939 library" LANGUAGES CXX)
 
 # ============================================================================================
 # Build Options
 # ============================================================================================
 
+#set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
@@ -33,8 +34,8 @@ option(THREADS_PREFER_PTHREAD_FLAG "Prefere pthread threads" ON)
 
 
 option(BUILD_TESTING "Build jay tests." ON)
-option(BUILD_EXAMPLES "Build examples." OFF)
-option(BUILD_DOCS "Build jay documentation." OFF)
+option(BUILD_EXAMPLES "Build examples." ON)
+option(BUILD_DOCS "Build jay documentation." ON)
 
 # ============================================================================================
 # Libraries

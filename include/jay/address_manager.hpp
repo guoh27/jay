@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2020 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
+// Copyright (c) 2022 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
 //
-// Distributed under the MIT License, Version 1.0. (See accompanying
+// Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 // Official repository: https://github.com/bjorn-jaes/jay
@@ -13,14 +13,13 @@
 #pragma once
 
 //C++
-#include <cstdlib>
-#include <functional>
-#include <string>
+#include <cstdlib>  //rand
+#include <string>   //std::string
 
 //Lib
-#include "boost/asio/io_context.hpp"
-#include "boost/asio/post.hpp"
-#include "boost/asio/deadline_timer.hpp"
+#include "boost/asio/io_context.hpp"     //boost::asio::io_context
+#include "boost/asio/post.hpp"           //boost::asio::post
+#include "boost/asio/deadline_timer.hpp" //boost::asio::deadline_timer
 
 //Local
 #include "address_claimer.hpp"
@@ -28,22 +27,21 @@
 namespace jay
 {
 
+/**
+ * @brief Wrapper class for sml state machine that implements timout events 
+ * as i have not found a way to implement timeouts internaly in address claimer
+ */
 class address_manager
 {
 public:
  
-  using self = address_manager;
-
   /**
   * @brief Callbacks used by the address manager
   */
   struct callbacks
-  {
-    //Called when a controller that is not in the network is found
-    std::function<void(jay::name, uint8_t)> on_new_controller;
-    
+  {   
     //Called when a local controller has claimed an address
-    std::function<void(jay::name, uint8_t)> on_address;
+    std::function<void(jay::name, std::uint8_t)> on_address;
     
     //Called when a local controller loses their claimed an address
     std::function<void(jay::name)> on_lose_address;
@@ -57,24 +55,48 @@ public:
 
   /**
   * @brief Constructor
+  * @param context from boost asio
+  * @param context name to claim address for
+  * @param network containing name address pairs
+  * @note remember to add callbacks for getting data out of object
   */
-  address_manager(boost::asio::io_context& context, jay::network& network) : 
-    context_(context), network_(network)
+  address_manager(boost::asio::io_context& context, jay::name name, jay::network& network) : 
+    context_(context), network_(network), addr_claimer_(name), 
+    state_machine_(addr_claimer_, network), timeout_timer_(context)
   {
-
+    addr_claimer_.set_callbacks(jay::address_claimer::callbacks{
+      [this](auto name, auto address) -> void {on_address(name, address);},
+      [this](auto name) -> void               {on_address_loss(name);},
+      [this]() -> void                        {on_begin_claiming();},
+      [this](auto name, auto address) -> void {on_address_claim(name, address);},
+      [this](auto name) -> void               {on_cannot_claim(name);}
+    });
   }
 
   /**
   * @brief Constructor with callbacks
+  * @param context from boost asio
+  * @param context name to claim address for
+  * @param network containing name address pairs
+  * @param callbacks for getting data out of object
   */
-  address_manager(boost::asio::io_context& context, jay::network& network, callbacks&& callbacks) : 
-    context_(context), network_(network), callbacks_(std::move(callbacks))
+  address_manager(boost::asio::io_context& context, jay::name name, jay::network& network, callbacks&& callbacks) : 
+    context_(context), network_(network), addr_claimer_(name), 
+    state_machine_(addr_claimer_, network), timeout_timer_(context), 
+    callbacks_(std::move(callbacks))
   {
-
+    addr_claimer_.set_callbacks(jay::address_claimer::callbacks{
+      [this](auto name, auto address) -> void {on_address(name, address);},
+      [this](auto name) -> void               {on_address_loss(name);},
+      [this]() -> void                        {on_begin_claiming();},
+      [this](auto name, auto address) -> void {on_address_claim(name, address);},
+      [this](auto name) -> void               {on_cannot_claim(name);}
+    });
   }
 
   /**
   * @brief set the callbacks for the address mananger
+  * @param callbacks for getting data out of the object
   */
   void set_callbacks(callbacks&& callbacks)
   {
@@ -82,128 +104,139 @@ public:
   }
 
   /**
-  * @brief Creates a controller object with a state machine for aquiring an address
-  * @param name of the controller
-  * @param preffered_address to claim
-  */
-  void aquire(jay::name name, uint8_t preffered_address)
+   * @brief Get the name object
+   * @return jay::name 
+   */
+  jay::name get_name() const noexcept
   {
-    boost::asio::post(context_, std::bind(&address_manager::post_aquire, this, name, preffered_address));
+    return addr_claimer_.get_name();
   }
 
   /**
-  * @brief Processes address claim and address request frames
-  * by tuning them into events and passing them to the state machine
-  * @note also registes new controllers into the new and updates their address
-  * @param frame containing and address claim or address request, other frames are ignored
-  */
-  void process(const jay::frame& frame)
+   * @brief Start the address claiming process
+   * @param preffered_address to claim
+   * @note event is posted to context
+   */
+  void start_address_claim(std::uint8_t preffered_address)
   {
-    if(frame.header.pgn() == jay::PGN_ADDRESS_CLAIM) //Address claim
+    if(!state_machine_.is(boost::sml::state<jay::address_claimer::st_no_address>))
     {
-      jay::name name(frame.payload);
-      boost::asio::post(context_, std::bind(&address_manager::post_address_claim, this, 
-        name, frame.header.source_adderess()));
       return;
     }
 
-    if(frame.header.pgn() == jay::PGN_REQUEST_ADDRESS) //Address request
-    {
-      boost::asio::post(context_, std::bind(&address_manager::post_address_request, this));
-    }
+    boost::asio::post(context_, [this, preffered_address]() -> void {
+      state_machine_.process_event(
+        jay::address_claimer::ev_start_claim{preffered_address});
+    });
+  }
+
+  /**
+   * @brief processes to address request event in state machine
+   * @param request event
+   * @note event is posted tp context
+   */
+  void address_request(jay::address_claimer::ev_address_request request)
+  {
+    boost::asio::post(context_, [this, request]() -> void {
+      state_machine_.process_event(request);
+    });
+  }
+
+  /**
+   * @brief processes an address claim event in state machine
+   * @param claim event
+   * @note event is posted tp context
+   */
+  void address_claim(jay::address_claimer::ev_address_claim claim)
+  {
+      boost::asio::post(context_, [this, claim]() -> void {
+      state_machine_.process_event(claim);
+    });
   }
 
 private:
 
-  void post_aquire(jay::name name, uint8_t preffered_address)
+  //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
+  //@                   Address claimer callbacks                    @//
+  //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
+
+  /**
+   * @brief Callbacks for when a state machine has aquired an address
+   * 
+   * @param name of controller in state machine
+   * @param address claimed by state machine
+   */
+  void on_address(jay::name name, std::uint8_t address)
   {
-    if(network_.in_network(name))
-    {
-      return;
-    }
-
-    auto id = vec_controllers_.size();
-    vec_controllers_.emplace_back(context_, network_, name, 
-    jay::address_claimer::callbacks{
-      [this](jay::name name, uint8_t address) -> void 
-      { //On_address
-        network_.insert(name, address);
-        if(callbacks_.on_address){callbacks_.on_address(name, address);}
-      },
-      [this](jay::name name) -> void 
-      { //On_loss
-        network_.release(name);
-        if(callbacks_.on_lose_address){callbacks_.on_lose_address(name);}
-      },
-      [id, this]() -> void 
-      { //on_begin_claiming
-        vec_controllers_[id].timeout_timer.expires_from_now(boost::posix_time::millisec(250));
-        vec_controllers_[id].timeout_timer.async_wait(
-        [id, this](auto ex)
-        {
-          on_claim_timout(id, ex);
-        });
-      },
-      [this](jay::frame frame) -> void 
-      {
-        ///NOTE: Should address claims here be registered in network?
-        callbacks_.on_frame(frame);
-      },
-      [id, this](jay::frame frame) -> void 
-      { //On_cannot_claim
-        auto rand_delay = rand() % 153; //Add a random 0 -150 ms delay
-        vec_controllers_[id].timeout_timer.expires_from_now(boost::posix_time::millisec(rand_delay));
-        vec_controllers_[id].timeout_timer.async_wait(
-        [frame, this](auto ex)
-        {
-          on_random_timeout(frame, ex);
-        });
-      }
-    });
-
-    vec_controllers_[id].state_machine.process_event(jay::address_claimer::ev_start_claim{preffered_address});
-  }
-
-  void post_address_claim(jay::name name, uint8_t source_adderess)
-  {
-    if(source_adderess < jay::ADDRESS_GLOBAL)
-    {
-      auto in = network_.in_network(name);
-      network_.insert(name, source_adderess);
-      if(!in)
-      { //Insert controller then notify with callback
-        if(callbacks_.on_new_controller)
-        {
-          callbacks_.on_new_controller(
-            name, source_adderess);
-        }
-      }
-    }
-    jay::address_claimer::ev_address_claim claim{
-      name, source_adderess
-    };
-    for(auto& ctrl : vec_controllers_)
-    {
-      ctrl.state_machine.process_event(claim);
-    }
-  }
-
-  void post_address_request()
-  {
-    jay::address_claimer::ev_address_request req{};
-    for(auto& ctrl : vec_controllers_)
-    {
-      ctrl.state_machine.process_event(req);
-    }
+    network_.insert(name, address);
+    if(callbacks_.on_address){callbacks_.on_address(name, address);}
   }
 
   /**
+   * @brief Callbacks for when a state machine has lost their address
+   * 
+   * @param name of controller in state machine
+   */
+  void on_address_loss(jay::name name)
+  {
+    network_.release(name);
+    if(callbacks_.on_lose_address){callbacks_.on_lose_address(name);}
+  }
+
+  /**
+   * @brief Callbacks for when a state machine has started claiming and address
+   * 
+   * @param name of controller in state machine
+   */
+  void on_begin_claiming()
+  {
+    ///TODO: Note CAs between 0 - 127 and 248 253 may omit 250ms delay
+    timeout_timer_.expires_from_now(boost::posix_time::millisec(250));
+    timeout_timer_.async_wait(
+    [this](auto ex)
+    {
+      on_claim_timout(ex);
+    });
+  }
+
+  /**
+   * @brief Callbacks for when a state machine needs to send address claiming frames
+   * 
+   * @param name of controller in state machine
+   * @param address to claim
+   */
+  void on_address_claim(jay::name name, std::uint8_t address)
+  {
+    if(callbacks_.on_frame){callbacks_.on_frame(
+      jay::frame::make_address_claim(name, address));}
+  }
+
+  /**
+   * @brief Callbacks for when a state machine needs to send cannot claim address frames
+   * @param name of controller in state machine
+   */
+  void on_cannot_claim(jay::name name)
+  {
+    auto rand_delay = rand() % 153; //Add a random 0 -150 ms delay
+    timeout_timer_.expires_from_now(boost::posix_time::millisec(rand_delay));
+    timeout_timer_.async_wait(
+    [name, this](auto ex)
+    {
+      on_random_timeout(jay::frame::make_cannot_claim(static_cast<jay::payload>(name)), ex);
+    });
+  }
+
+  //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
+  //@                  Timeout callbacks implementation              @//
+  //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
+
+  /**
   * @brief callback function triggered when delay has finished for
-  * claim an address in the network
-  * @param id of the controller claiming its address
+  * claiming an address in the network
+  * @param name of the controller claiming its address
   * @param error code if issue came up while waiting
   */
-  void on_claim_timout(size_t id, const boost::system::error_code& error)
+  void on_claim_timout(const boost::system::error_code& error)
   {
     if(error)
     {
@@ -211,11 +244,11 @@ private:
       {
         if(callbacks_.on_error)
         {
-          callbacks_.on_error("where: on_claim_timout", error.message());
+          callbacks_.on_error("on_claim_timout", error.message());
         }
       }
     }
-    vec_controllers_[id].state_machine.process_event(jay::address_claimer::ev_timeout{});
+    state_machine_.process_event(jay::address_claimer::ev_timeout{});
   }
 
   /**
@@ -232,7 +265,7 @@ private:
       {
         if(callbacks_.on_error)
         {
-          callbacks_.on_error("where: on_random_timeout", error.message());
+          callbacks_.on_error("on_random_timeout", error.message());
         }
       }
     }
@@ -242,45 +275,26 @@ private:
 
 private:
 
-  /**
-  * Internal structure for combinging
-  * address claimer, state machine and timer.
-  * Usesful for placing in containers
-  */
-  struct controller
-  {
-    controller(boost::asio::io_context& context, 
-      jay::network& network, jay::name name) : 
-      addr_claimer(name), 
-      state_machine(addr_claimer, network),
-      timeout_timer(context)
-    {
-    }
-
-    controller(boost::asio::io_context& context, jay::network& network, 
-      jay::name name, jay::address_claimer::callbacks&& callbacks) : 
-      addr_claimer(name, std::move(callbacks)), 
-      state_machine(addr_claimer, network),
-      timeout_timer(context)
-    {
-    }
-
-    jay::address_claimer addr_claimer;
-    boost::sml::sm<jay::address_claimer> state_machine;
-    boost::asio::deadline_timer timeout_timer;
-  };
+    ///TODO: Okay so for some reason the address claimer that is referenced in
+    ///state machine the address claimer is empty. In the while the
+    ///data in the map is still valid? not sure how this is happening.
+    ///Maybe time to change back to vector, change the situator, by making controller its own
+    ///class and ignoring the storage completly. Maybe another class that handles insertion
+    ///into network and new controllers
 
 private:
 
   //Injected
-
   boost::asio::io_context& context_;
   jay::network& network_;
+
+  //Internal
+
+  jay::address_claimer addr_claimer_;
+  boost::sml::sm<jay::address_claimer> state_machine_;
+  boost::asio::deadline_timer timeout_timer_;
+
   callbacks callbacks_;
-
-  // Internal
-
-  std::vector<controller> vec_controllers_{};
 
 };
 
@@ -289,4 +303,3 @@ private:
 
 
 #endif
-
