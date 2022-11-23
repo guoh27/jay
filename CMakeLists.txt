@@ -35,7 +35,7 @@ option(THREADS_PREFER_PTHREAD_FLAG "Prefere pthread threads" ON)
 
 option(BUILD_TESTING "Build jay tests." ON)
 option(BUILD_EXAMPLES "Build examples." ON)
-option(BUILD_DOCS "Build jay documentation." ON)
+option(BUILD_DOCS "Build jay documentation." OFF)
 
 # ============================================================================================
 # Libraries
@@ -102,8 +102,6 @@ if (BUILD_DOCS)
     INCLUDE_DIRECTORY
       ${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIR}
       ${Boost_INCLUDE_DIR}
-    MACRO_DEFINITION
-      CANARY_SEPARATE_COMPILATION
     INPUT ${JAY_HEADERS})
 endif()
 

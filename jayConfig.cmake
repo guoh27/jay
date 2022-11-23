@@ -13,4 +13,4 @@ find_dependency(Boost COMPONENTS system)
 find_dependency(canary)
 find_dependency(Threads)
 
-include("${CMAKE_CURRENT_LIST_DIR}/jay-targets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/jayTargets.cmake")
