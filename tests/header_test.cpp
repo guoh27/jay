@@ -20,20 +20,20 @@ TEST(Jay_Header_Test, Jay_Header_Getters_Tests)
   ///TODO: Make it possible to get the entire frame header
   ///TODO: Make sure that the extended error and rtr bits are set
   ///correctly for each constructor
-
+  ASSERT_FALSE(header.is_broadcast());
   ASSERT_EQ(header.id(), 0x1D'AF'FF'02);
   ASSERT_EQ(header.priority(), 7);
   ASSERT_EQ(header.data_page(), true);
   ASSERT_EQ(header.pdu_format(), 0xAF);
   ASSERT_EQ(header.pdu_specific(), 0xFF);
-  ASSERT_EQ(header.pgn(), 0x00'01'AF'FF);
+  ASSERT_EQ(header.pgn(), 0x00'01'AF'00);
   ASSERT_EQ(header.source_adderess(), 0x02);
   ASSERT_EQ(header.payload_length(), 1);
 
-  ASSERT_FALSE(header.is_broadcast());
 
   jay::frame_header header1{10, 0x0FAF0, 0x64, 5};
 
+  ASSERT_TRUE(header1.is_broadcast());
   ASSERT_EQ(header1.id(), 0x1C'FA'F0'64);
   ASSERT_EQ(header1.priority(), 7);
   ASSERT_EQ(header1.data_page(), false);
@@ -43,10 +43,10 @@ TEST(Jay_Header_Test, Jay_Header_Getters_Tests)
   ASSERT_EQ(header1.source_adderess(), 0x64);
   ASSERT_EQ(header1.payload_length(), 5);
 
-  ASSERT_TRUE(header1.is_broadcast());
 
   jay::frame_header header2{0xFD'FF'FF'FF};
 
+  ASSERT_TRUE(header2.is_broadcast());
   ASSERT_EQ(header2.id(), 0x1D'FF'FF'FF);
   ASSERT_EQ(header2.priority(), 7);
   ASSERT_EQ(header2.data_page(), true);
@@ -56,7 +56,6 @@ TEST(Jay_Header_Test, Jay_Header_Getters_Tests)
   ASSERT_EQ(header2.source_adderess(), 0xFF);
   ASSERT_EQ(header2.payload_length(), 0);
 
-  ASSERT_TRUE(header2.is_broadcast());
 }
 
 TEST(Jay_Header_Test, Jay_Header_Setters_Tests)

@@ -246,11 +246,15 @@ public:
   /**
   * @brief Get the 18-bit parameter group number (PGN) of the header
   * the PGN consists of reserved bit, data page, pdu format(pf) and pdu specific (ps)
-  * @return 18 - bit, paramter group number 
+  * @return 18 - bit, paramter group number
+  * @note if the pdu format is global then pdu specific is returned with pgn if not then
+  * pdu specific bytes are set to 0x00.
   */
   pgn_t pgn() const noexcept
   {
-    return (header_.id() & pgn_mask) >> 8;
+    auto pgn = (header_.id() & pgn_mask);
+    if(!is_broadcast()) { pgn &= ~ps_mask; }
+    return pgn >> 8;
   }
 
   /**

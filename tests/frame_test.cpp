@@ -40,7 +40,7 @@ TEST(Jay_Frame_Test, Jay_Frame_Create_Test)
   ASSERT_EQ(addr_req.header.data_page(), false);
   ASSERT_EQ(addr_req.header.pdu_format(), jay::PF_REQUEST);
   ASSERT_EQ(addr_req.header.pdu_specific(), J1939_NO_ADDR);
-  ASSERT_EQ(addr_req.header.pgn(), J1939_PGN_REQUEST | J1939_NO_ADDR);
+  ASSERT_EQ(addr_req.header.pgn(), J1939_PGN_REQUEST);
   ASSERT_EQ(addr_req.header.source_adderess(), J1939_IDLE_ADDR);
   ASSERT_EQ(addr_req.header.payload_length(), 3);
   ASSERT_EQ(addr_req.payload[0], 0x00);
@@ -57,7 +57,7 @@ TEST(Jay_Frame_Test, Jay_Frame_Create_Test)
   ASSERT_EQ(cant_claim.header.data_page(), false);
   ASSERT_EQ(cant_claim.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
   ASSERT_EQ(cant_claim.header.pdu_specific(), J1939_NO_ADDR);
-  ASSERT_EQ(cant_claim.header.pgn(), J1939_PGN_ADDRESS_CLAIMED | J1939_NO_ADDR);
+  ASSERT_EQ(cant_claim.header.pgn(), J1939_PGN_ADDRESS_CLAIMED);
   ASSERT_EQ(cant_claim.header.source_adderess(), J1939_IDLE_ADDR);
   ASSERT_EQ(cant_claim.header.payload_length(), 8);
 
@@ -69,7 +69,7 @@ TEST(Jay_Frame_Test, Jay_Frame_Create_Test)
   ASSERT_EQ(claim.header.data_page(), false);
   ASSERT_EQ(claim.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
   ASSERT_EQ(claim.header.pdu_specific(), J1939_NO_ADDR);
-  ASSERT_EQ(claim.header.pgn(), J1939_PGN_ADDRESS_CLAIMED | J1939_NO_ADDR);
+  ASSERT_EQ(claim.header.pgn(), J1939_PGN_ADDRESS_CLAIMED);
   ASSERT_EQ(claim.header.source_adderess(), 0xAA);
   ASSERT_EQ(claim.header.payload_length(), 8);
 }

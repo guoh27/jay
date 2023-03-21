@@ -55,7 +55,7 @@ public:
 
 };
 
-TEST_F(NetworkManagerTest, Jay_Netowrk_Manager_Test)
+TEST_F(NetworkManagerTest, Jay_Network_Manager_Test)
 {
 
   boost::asio::io_context context;
