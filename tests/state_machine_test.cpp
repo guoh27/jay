@@ -72,7 +72,7 @@ protected:
 public:
   uint64_t local_name{0xFFU};
   uint8_t address{0xAAU};
-  jay::network j1939_network{};
+  jay::network j1939_network{"vcan0"};
   std::queue<std::pair<jay::name, std::uint8_t>> claim_queue{};
   std::queue<jay::name> cannot_claim_queue{};
 

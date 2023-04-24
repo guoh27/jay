@@ -14,7 +14,8 @@
 
 TEST(Jay_Network_Test, Jay_Network_Insert_Test)
 {
-  jay::network j1939_network{};
+  std::string interface_name{"vcan0"};
+  jay::network j1939_network{interface_name};
   uint64_t controller_1{0xa00c81045a20021b}; ///Temp hardwire names 11532734601480897051
   uint64_t controller_2{0xa00c810c5a20021b}; ///Temp hardwire names 11532734635840635419
   uint8_t address_1{0x96};
@@ -24,6 +25,7 @@ TEST(Jay_Network_Test, Jay_Network_Insert_Test)
   ASSERT_TRUE(j1939_network.insert(controller_2, address_2));
 
   //Checking network internals
+  ASSERT_EQ(interface_name, j1939_network.get_interface_name());
   ASSERT_TRUE(j1939_network.in_network(controller_1));
   ASSERT_TRUE(j1939_network.in_network(controller_2));
   ASSERT_FALSE(j1939_network.available(address_1));
@@ -98,7 +100,7 @@ TEST(Jay_Network_Test, Jay_Network_Insert_Test)
 
 TEST(Jay_Network_Test, Jay_Network_Fill_Test)
 {
-  jay::network j1939_network{};
+  jay::network j1939_network{"vcan0"};
   ASSERT_FALSE(j1939_network.full());
 
   for(uint8_t i = 0; i < J1939_NO_ADDR; i++)
@@ -113,7 +115,7 @@ TEST(Jay_Network_Test, Jay_Network_Fill_Test)
 
 TEST(Jay_Network_Test, Jay_Network_Search_Test)
 {
-  jay::network j1939_network{};
+  jay::network j1939_network{"vcan0"};
   ASSERT_FALSE(j1939_network.full());
 
   uint64_t controller{200};

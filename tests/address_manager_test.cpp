@@ -69,13 +69,14 @@ public:
 
   boost::asio::io_context io{};
   jay::name local_name {0xFF};
-  jay::network j1939_network{};
+  jay::network j1939_network{"vcan0"};
   jay::address_manager addr_mng{io, local_name, j1939_network};
 
 };
 
 TEST_F(AddressManagerTest, Jay_Address_Manager_Test)
 {
+  std::cout << "This test will take up to a min please be patient..." << std::endl;
   ASSERT_EQ(frame_queue.size(), 0);
 
   //Return cannot claim address

@@ -14,10 +14,11 @@
 
 //Libraries
 #include "canary/socket_options.hpp"
+#include "canary/interface_index.hpp"
 
 J1939Connection::J1939Connection(
   boost::asio::io_context& io_context,
-  std::shared_ptr<jay::network> network): 
+  jay::network& network): 
   socket_(boost::asio::make_strand(io_context)),
   network_(network)
 {
@@ -25,7 +26,7 @@ J1939Connection::J1939Connection(
 
 J1939Connection::J1939Connection(
   boost::asio::io_context& io_context,
-  std::shared_ptr<jay::network> network, 
+  jay::network& network, 
   Callbacks && callbacks): 
   socket_(boost::asio::make_strand(io_context)), network_(network),
   callbacks_(std::move(callbacks))
@@ -34,20 +35,10 @@ J1939Connection::J1939Connection(
 
 J1939Connection::J1939Connection(
   boost::asio::io_context& io_context,
-  std::shared_ptr<jay::network> network, 
-  Callbacks && callbacks, 
-  jay::name local_name) : 
-  socket_(boost::asio::make_strand(io_context)), network_(network),
-  callbacks_(std::move(callbacks)), local_name_(local_name)
-{
-}
-
-J1939Connection::J1939Connection(
-  boost::asio::io_context& io_context,
-  std::shared_ptr<jay::network> network,
+  jay::network& network,
   Callbacks && callbacks,
-  jay::name local_name, 
-  jay::name target_name) : 
+  std::optional<jay::name> local_name, 
+  std::optional<jay::name> target_name) : 
   socket_(boost::asio::make_strand(io_context)), network_(network),
   callbacks_(std::move(callbacks)), local_name_(local_name), 
   target_name_(target_name) 
@@ -56,13 +47,18 @@ J1939Connection::J1939Connection(
 
 J1939Connection::~J1939Connection()
 {
-  callbacks_.on_destroy(this);
+  if(callbacks_.on_destroy)
+  {
+    callbacks_.on_destroy(this);
+  }
 }
 
-bool J1939Connection::Open(canary::raw::endpoint endpoint, std::vector<canary::filter> filters)
+bool J1939Connection::Open(const std::vector<canary::filter>& filters)
 {
   try
   {
+    auto endpoint = canary::raw::endpoint{
+      canary::get_interface_index(network_.get_interface_name())};
     socket_.open(endpoint.protocol());
     socket_.bind(endpoint);
     if(filters.size() > 0)
@@ -72,7 +68,7 @@ bool J1939Connection::Open(canary::raw::endpoint endpoint, std::vector<canary::f
   }
   catch(boost::system::error_code ec)
   {
-    callbacks_.on_fail("open", ec);
+    callbacks_.on_error("open", ec);
     return false;
   }
   return true;
@@ -80,7 +76,10 @@ bool J1939Connection::Open(canary::raw::endpoint endpoint, std::vector<canary::f
 
 void J1939Connection::Start()
 {
-  callbacks_.on_start(this);
+  if(callbacks_.on_start)
+  {
+    callbacks_.on_start(this);
+  }
   Read();
 }
 
@@ -120,7 +119,7 @@ void J1939Connection::SendBroadcast(jay::frame& j1939_frame)
     throw std::invalid_argument("Socket has no local name");
   }
 
-  auto source_address = network_->get_address(*local_name_);
+  auto source_address = network_.get_address(*local_name_);
   if(source_address == J1939_IDLE_ADDR)
   {
     throw std::invalid_argument("Socket has no source address");
@@ -148,13 +147,13 @@ void J1939Connection::SendTo(const uint64_t destination, jay::frame& j1939_frame
     throw std::invalid_argument("Socket has no local name");
   }
 
-  auto source_address = network_->get_address(*local_name_);
+  auto source_address = network_.get_address(*local_name_);
   if(source_address == J1939_IDLE_ADDR)
   {
     throw std::invalid_argument("Socket has no source address");
   }
 
-  auto destination_address = network_->get_address(destination);
+  auto destination_address = network_.get_address(destination);
   if(source_address == J1939_IDLE_ADDR)
   {
     throw std::invalid_argument("Destination has no address");
@@ -166,7 +165,7 @@ void J1939Connection::SendTo(const uint64_t destination, jay::frame& j1939_frame
   return SendRaw(j1939_frame);
 }
 
-void J1939Connection::OnFail(char const* what, boost::system::error_code ec)
+void J1939Connection::OnError(char const* what, boost::system::error_code ec)
 {
   // Don't report on canceled operations
   if(ec == boost::asio::error::operation_aborted)
@@ -174,7 +173,7 @@ void J1939Connection::OnFail(char const* what, boost::system::error_code ec)
     return;
   }
 
-  callbacks_.on_fail(what, ec);
+  callbacks_.on_error(what, ec);
 }
 
 void J1939Connection::Read()
@@ -182,7 +181,7 @@ void J1939Connection::Read()
   socket_.async_receive(canary::net::buffer(&buffer_, sizeof(buffer_)),
     [self{shared_from_this()}](auto error, auto)
     {
-      if(error) { return self->OnFail("read", error); }
+      if(error) { return self->OnError("read", error); }
 
       //Trigger callback with frame
       self->callbacks_.on_data(self->buffer_);
@@ -203,7 +202,7 @@ void J1939Connection::Write()
     [self{shared_from_this()}](auto error, auto)
     {
       // Handle the error, if any
-      if(error) { return self->OnFail("write", error); }
+      if(error) { return self->OnError("write", error); }
 
       // Remove the string from the queue
       self->queue_.pop();

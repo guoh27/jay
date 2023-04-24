@@ -19,6 +19,7 @@
 #include <set>            //std::set
 #include <optional>       //std::optional
 #include <algorithm>      //std::clamp
+#include <string>         //std::string
 
 //Local
 #include "name.hpp" // name, jay globals, and std::uint8_t
@@ -36,7 +37,14 @@ class network
 {
 public:
 
-  network() = default;
+  /**
+   * @brief Construct a new network object
+   * 
+   * @param interface_name that the network is assosiated with
+   */
+  network(std::string interface_name) : 
+    interface_name_(interface_name) 
+  {}
 
   ///TODO: Should be able to implement a copy, but deleted in the meantime
   network(const network &) = delete;
@@ -305,6 +313,15 @@ public:
 
   ///TODO: Check the name of other devices and see if they can change their address
 
+  /**
+   * @brief Get the name of the interface that this network is assosiated with
+   * @return const std::string& 
+   */
+  const std::string& get_interface_name() const
+  {
+    return interface_name_;
+  }
+
 private:
 
   /**
@@ -327,6 +344,8 @@ private:
   }
 
 private:
+
+  const std::string interface_name_{"can0"};
 
   ///NOTE: Could implement maps as a bidirectional map, 
   ///but would need somewhere for names with null address

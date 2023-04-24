@@ -12,8 +12,6 @@
 #include "boost/asio/io_context.hpp"
 #include "boost/asio/signal_set.hpp"
 
-#include "canary/interface_index.hpp"
-
 #include "../include/jay/network.hpp"
 #include "../include/jay/address_manager.hpp"
 #include "../include/jay/network_manager.hpp"
@@ -37,12 +35,10 @@ int main()
 
   // ------- Create network components ------- //
 
-  auto j1939_network = std::make_shared<jay::network>();
-  auto j1939_connection = std::make_shared<J1939Connection>(io_layer, j1939_network);
-
-  jay::network_manager net_mngr{*j1939_network};
-
-  jay::address_manager addr_mngr {io_layer, jay::name{0x7758}, *j1939_network};
+  jay::network vcan0_network{"vcan0"};
+  auto j1939_connection = std::make_shared<J1939Connection>(io_layer, vcan0_network);
+  jay::network_manager net_mngr{vcan0_network};
+  jay::address_manager addr_mngr {io_layer, jay::name{0x7758}, vcan0_network};
 
   // ------- Connect components with callbacks ------- //
 
@@ -105,8 +101,7 @@ int main()
   // ------- Run context ------- //
 
   ///TODO: Insert filter for connection
-  if(!j1939_connection->Open(canary::raw::endpoint{
-    canary::get_interface_index("vcan0")}, {}))
+  if(!j1939_connection->Open({}))
   {
     return -1;
   }

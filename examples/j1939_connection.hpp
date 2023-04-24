@@ -15,6 +15,7 @@
 //C++
 #include <queue>
 #include <vector>
+#include <functional>
 
 //Libraries
 #include "boost/asio.hpp"
@@ -22,8 +23,10 @@
 #include "canary/raw.hpp"
 #include "canary/filter.hpp"
 
-#include "../include/jay/frame.hpp"
-#include "../include/jay/network.hpp"
+#include "jay/network.hpp"
+#include "jay/frame.hpp"
+
+//Local
 
 ///TODO: There is probably some way to combine the CAN and j1939 connection
 /// into a single templated class
@@ -32,79 +35,144 @@
 /// though keeping it seperate for now until i find a good solution
 
 /**
- * J1939 Connection for reading and sending j1939 messages
+ * J1939 Connection analog for reading and sending j1939 messages
+ *
+ * Callbacks are used to singal start on end of connection. 
+ * Incomming data is also passed along using a callbacks. 
+ * Outgoing can frames are also queued before being sent.
+ * @note The connection manages its own lifetime
 */
 class J1939Connection : public std::enable_shared_from_this<J1939Connection>
 {
 public:
 
+  /**
+   * @brief Struct containing callbacks for J1939Connection
+   */
   struct Callbacks
   {
-    std::function<void(J1939Connection*)> on_start;
-    std::function<void(J1939Connection*)> on_destroy;
-    std::function<void(jay::frame)> on_data;
-    std::function<void(const std::string, const boost::system::error_code)> on_fail;
+    //Alias
+    using J1939OnSelf = std::function<void(J1939Connection*)>;
+    using J1939OnError = std::function<void(const std::string, const boost::system::error_code)>;
+    using J1939OnData = std::function<void(jay::frame)>;
+
+    /**
+     * @brief Callback for when connection is stated
+     * @note is optional
+     */
+    J1939OnSelf on_start;
+
+    /**
+     * @brief Callback for when connection is destroyed
+     * @note is optional
+     */
+    J1939OnSelf on_destroy;
+
+    /**
+     * @brief Callback for when data is recieved
+     */
+    J1939OnData on_data;
+
+    /**
+     * @brief Callback for when an error occurs
+     *
+     * Constains a string indicating where the error happened and
+     * an error code detailing the error.
+     */
+    J1939OnError on_error;
   };
 
   /**
    * @brief Construct a new Can Connection object
    * 
-   * @param io_context for this connection
-   * @param callbacks triggered interaly
+   * @param io_context for performing async io operation
+   * @param network containing address name pairs
    */
   J1939Connection(
     boost::asio::io_context& io_context,
-    std::shared_ptr<jay::network> network);
+    jay::network& network);
 
+  /**
+   * @brief Construct a new J1939Connection object
+   * 
+   * @param io_context for performing async io operation
+   * @param network containing address name pairs
+   * @param callbacks for generated events
+   */
   J1939Connection(
     boost::asio::io_context& io_context,
-    std::shared_ptr<jay::network> network, 
+    jay::network& network, 
     Callbacks && callbacks);
 
+  /**
+   * @brief Construct a new J1939Connection object
+   * 
+   * @param io_context for performing async io operation
+   * @param network containing address name pairs
+   * @param callbacks for generated events
+   * @param local_name that this connection is sending messages from
+   * @param target_name that this connection is sending messages to
+   */
   J1939Connection(
     boost::asio::io_context& io_context,
-    std::shared_ptr<jay::network> network,
+    jay::network& network,
     Callbacks && callbacks,
-    jay::name local_name);
+    std::optional<jay::name> local_name, 
+    std::optional<jay::name> target_name);
 
-  J1939Connection(
-    boost::asio::io_context& io_context,
-    std::shared_ptr<jay::network> network,
-    Callbacks && callbacks,
-    jay::name local_name, 
-    jay::name target_name);
-
+  /**
+   * @brief Destroy the J1939Connection object
+   */
   ~J1939Connection();
 
-  bool Open(canary::raw::endpoint endpoint, 
-    std::vector<canary::filter> filters);
+  /**
+   * @brief Open an j1939 endpoint
+   * @param endpoint to open
+   * @param filters for incomming j1939 messages
+   * @return true if opened endpoint
+   * @return false if failed to open endpoint
+   */
+  bool Open(const std::vector<canary::filter>& filters);
 
   /**
    * Listen for incomming j1939 frames
-   * @param
   */
   void Start();
 
   /// ##################### Set/Get ##################### ///
 
+  /**
+   * @brief Set the Callbacks object
+   * @param callbacks 
+   */
   void SetCallbacks(Callbacks && callbacks)
   {
     callbacks_ = std::move(callbacks);
   }
 
+  /**
+   * @brief Set the local j1939 name
+   * @param name of the device this connection is sending
+   * messages from, used for setting source address in messages
+   */
   void SetLocalName(jay::name name)
   {
     local_name_ = name;
   }
 
+  /**
+   * @brief Set the Target Name object
+   * @param name of the device this connection is sending
+   * messages to, used for setting destination address in messages
+   */
   void SetTargetName(jay::name name)
   {
     target_name_ = name;
   }
 
   /**
-   * Get bound name of the controller application
-   * @return bound name, is 0 if no name is bound
+   * Get local name on this connection
+   * @return optional name, is null_opt if none was set
   */
   std::optional<jay::name> GetLocalName() const
   {
@@ -112,16 +180,19 @@ public:
   } 
 
   /**
-   * @todo lock mutex?
-   * Get name of the remote controller application this socket is connected to
-   * @return connected name, is 0 if no name is bound
+   * Get target name on this connection
+   * @return optional name, is null_opt if none was set
   */
   std::optional<jay::name> GetTargeName() const
   {
     return target_name_;
   }
 
-  std::shared_ptr<jay::network> GetNetwork() const
+  /**
+   * @brief Get the Network reference
+   * @return jay::network& 
+   */
+  jay::network&  GetNetwork() const
   {
     return network_;
   }
@@ -167,20 +238,22 @@ public:
   */
   void SendTo(const uint64_t destination, jay::frame& j1939_frame);
 
-  /// ##################### GETTERS ##################### ///
-
-
 private:
 
-  void OnFail(char const* what, boost::system::error_code ec);
+  /**
+   * @brief Called when an event failes
+   * @param what failed
+   * @param ec for the error
+   */
+  void OnError(char const* what, boost::system::error_code ec);
 
   /**
-   * 
+   * Read data from socket
   */
   void Read();
 
   /**
-   * 
+   * Write frames from qeueu to socket
   */
   void Write();
 
@@ -188,19 +261,20 @@ private:
 
   //Injected
 
-  canary::raw::socket socket_;
-  std::shared_ptr<jay::network> network_{};
-  Callbacks callbacks_;
+  canary::raw::socket socket_;  /**< raw CAN-bus socket */
+  jay::network& network_;       /**< Network reference for querying network for addresses */
+  Callbacks callbacks_;         /**< Callbacks for generated events */
 
-  std::optional<jay::name> local_name_{};
-  std::optional<jay::name> target_name_{};
+  std::optional<jay::name> local_name_{};  /**< Optional local j1939 name */
+  std::optional<jay::name> target_name_{}; /**< Optional targeted j1939 name */
 
   //Internal
 
-  jay::frame buffer_{};
-  std::queue<jay::frame> queue_{};
+  jay::frame buffer_{};             /**< Incomming frame buffer */
+  std::queue<jay::frame> queue_{};  /**< Outgoing  frame queue */
 
 
 };
+
 
 #endif

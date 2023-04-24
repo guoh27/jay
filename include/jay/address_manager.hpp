@@ -28,7 +28,7 @@ namespace jay
 {
 
 /**
- * @brief Wrapper class for sml state machine that implements timout events 
+ * @brief Wrapper class for sml state machine that implements timeout events 
  * as i have not found a way to implement timeouts internaly in address claimer
  */
 class address_manager
@@ -275,14 +275,15 @@ private:
 
 private:
 
-    ///TODO: Okay so for some reason the address claimer that is referenced in
-    ///state machine the address claimer is empty. In the while the
-    ///data in the map is still valid? not sure how this is happening.
-    ///Maybe time to change back to vector, change the situator, by making controller its own
-    ///class and ignoring the storage completly. Maybe another class that handles insertion
-    ///into network and new controllers
+  ///TODO: Okay so for some reason the address claimer that is referenced in
+  ///state machine the address claimer is empty. In the while the
+  ///data in the map is still valid? not sure how this is happening.
+  ///Maybe time to change back to vector, change the situator, by making controller its own
+  ///class and ignoring the storage completly. Maybe another class that handles insertion
+  ///into network and new controllers
 
-private:
+  ///TODO: Instead of using timeout could use tick?
+
 
   //Injected
   boost::asio::io_context& context_;

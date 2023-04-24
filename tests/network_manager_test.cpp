@@ -50,7 +50,7 @@ protected:
 public:
   std::queue<std::pair<jay::name, std::uint8_t>> new_controller_queue{};
 
-  jay::network j1939_network{};
+  jay::network j1939_network{"vcan0"};
   jay::network_manager net_mng{j1939_network};
 
 };
