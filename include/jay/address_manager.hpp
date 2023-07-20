@@ -50,7 +50,7 @@ public:
     std::function<void(jay::frame)> on_frame;
     
     //Called when an internal error occurs, used for debugging
-    std::function<void(std::string, std::string)> on_error;
+    std::function<void(std::string, const boost::system::error_code&)> on_error;
   };
 
   /**
@@ -193,9 +193,10 @@ private:
     ///TODO: Note CAs between 0 - 127 and 248 253 may omit 250ms delay
     timeout_timer_.expires_from_now(boost::posix_time::millisec(250));
     timeout_timer_.async_wait(
-    [this](auto ex)
+    [this](auto error_code)
     {
-      on_claim_timout(ex);
+      if(error_code){return on_fail("on_claim_timeout", error_code);}
+      state_machine_.process_event(jay::address_claimer::ev_timeout{});
     });
   }
 
@@ -220,67 +221,30 @@ private:
     auto rand_delay = rand() % 153; //Add a random 0 -150 ms delay
     timeout_timer_.expires_from_now(boost::posix_time::millisec(rand_delay));
     timeout_timer_.async_wait(
-    [name, this](auto ex)
+    [name, this](auto error_code)
     {
-      on_random_timeout(jay::frame::make_cannot_claim(static_cast<jay::payload>(name)), ex);
+      if(error_code){return on_fail("on_claim_timeout", error_code);}
+      callbacks_.on_frame(jay::frame::make_cannot_claim(static_cast<jay::payload>(name)));
     });
   }
 
-  //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
-  //@                  Timeout callbacks implementation              @//
-  //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
 
   /**
-  * @brief callback function triggered when delay has finished for
-  * claiming an address in the network
-  * @param name of the controller claiming its address
-  * @param error code if issue came up while waiting
-  */
-  void on_claim_timout(const boost::system::error_code& error)
+   * @brief Checks the for ignorable errors. Errors cant be ignored
+   * the error code is sent to the on_error callback
+   * 
+   * @param what - function name the error happened in
+   * @param error_code - containing information regarding the error
+   */
+  void on_fail(char const *what, boost::system::error_code error_code)
   {
-    if(error)
-    {
-      if (error != boost::asio::error::operation_aborted)
-      {
-        if(callbacks_.on_error)
-        {
-          callbacks_.on_error("on_claim_timout", error.message());
-        }
-      }
-    }
-    state_machine_.process_event(jay::address_claimer::ev_timeout{});
-  }
-
-  /**
-  * @brief callback function triggered when random delay has finished for
-  * cannot claim address frame
-  * @param frame containing cannot claim message
-  * @param error code if issue came up while waiting for the delay
-  */
-  void on_random_timeout(const jay::frame& frame, const boost::system::error_code& error) const
-  { 
-    if(error)
-    {
-      if (error != boost::asio::error::operation_aborted)
-      {
-        if(callbacks_.on_error)
-        {
-          callbacks_.on_error("on_random_timeout", error.message());
-        }
-      }
-    }
-    callbacks_.on_frame(frame);
+    // Don't report these
+    if (error_code == boost::asio::error::operation_aborted) {return;}
+    if (callbacks_.on_error){ callbacks_.on_error(what, error_code); }
   }
 
 
 private:
-
-  ///TODO: Okay so for some reason the address claimer that is referenced in
-  ///state machine the address claimer is empty. In the while the
-  ///data in the map is still valid? not sure how this is happening.
-  ///Maybe time to change back to vector, change the situator, by making controller its own
-  ///class and ignoring the storage completly. Maybe another class that handles insertion
-  ///into network and new controllers
 
   ///TODO: Instead of using timeout could use tick?
 

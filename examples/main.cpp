@@ -67,6 +67,12 @@ int main()
         net_mngr.process(frame);
       },
 
+      //J1939Connection -> OnSend Callback
+      [](auto frame) 
+      {
+        std::cout << "Sent frame: " << frame.to_string() << std::endl;
+      },
+
       //J1939Connection -> OnFail Callback
       [](auto what, auto ec)
       {
@@ -92,9 +98,9 @@ int main()
           return shared->SendRaw(frame);
         }
       },
-      [](std::string what, std::string error) -> void 
+      [](std::string what, auto error) -> void 
       {
-        std::cout << what << " " << error << std::endl;
+        std::cout << what << " " << error.message() << std::endl;
       }
   });
 

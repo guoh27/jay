@@ -39,9 +39,9 @@ protected:
         //std::cout << "Sending: " << frame.to_string() << std::endl;
         frame_queue.push(frame);
       },
-      [](std::string what, std::string error) -> void 
+      [](std::string what, auto error) -> void 
       { //ON error
-        std::cout << what << " : " << error << std::endl;
+        std::cout << what << " : " << error.message() << std::endl;
       }
   });
   }
