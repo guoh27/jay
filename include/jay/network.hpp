@@ -31,7 +31,8 @@ namespace jay
  * @mainpage
  * @brief Storage class for maintaining the relation between
  * controller name and its address.
- * @note Is thread safe
+ * @note Is thread safe, needs to be passed by reference or pointer
+ * as moving or copying is not allowed.
 */
 class network
 {
@@ -51,8 +52,8 @@ public:
   network &operator=(const network &) = delete;
 
   //Move
-  network(network &&) = default;
-  network &operator=(network &&) = default;
+  network(network &&) = delete;
+  network &operator=(network &&) = delete;
 
   /// ##################### Copy Internal ##################### ///
 

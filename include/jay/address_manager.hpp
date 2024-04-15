@@ -61,8 +61,8 @@ public:
   * @note remember to add callbacks for getting data out of object
   */
   address_manager(boost::asio::io_context& context, jay::name name, jay::network& network) : 
-    context_(context), network_(network), addr_claimer_(name), 
-    state_machine_(addr_claimer_, network), timeout_timer_(context)
+    context_(context), network_(network), addr_claimer_(name), claim_state_(), has_address_state_(),
+    state_machine_(addr_claimer_, network, claim_state_, has_address_state_), timeout_timer_(context)
   {
     addr_claimer_.set_callbacks(jay::address_claimer::callbacks{
       [this](auto name, auto address) -> void {on_address(name, address);},
@@ -81,8 +81,8 @@ public:
   * @param callbacks for getting data out of object
   */
   address_manager(boost::asio::io_context& context, jay::name name, jay::network& network, callbacks&& callbacks) : 
-    context_(context), network_(network), addr_claimer_(name), 
-    state_machine_(addr_claimer_, network), timeout_timer_(context), 
+    context_(context), network_(network), addr_claimer_(name), claim_state_(), has_address_state_(),
+    state_machine_(addr_claimer_, network, claim_state_, has_address_state_), timeout_timer_(context), 
     callbacks_(std::move(callbacks))
   {
     addr_claimer_.set_callbacks(jay::address_claimer::callbacks{
@@ -256,6 +256,8 @@ private:
   //Internal
 
   jay::address_claimer addr_claimer_;
+  jay::address_claimer::st_claiming_ claim_state_;
+  jay::address_claimer::st_has_address has_address_state_;
   boost::sml::sm<jay::address_claimer> state_machine_;
   boost::asio::deadline_timer timeout_timer_;
 
