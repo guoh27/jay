@@ -9,17 +9,16 @@
 
 #include <gtest/gtest.h>
 
-
 #include "../include/jay/header.hpp"
 
 TEST(Jay_Header_Test, Jay_Header_Getters_Tests)
 {
 
-  jay::frame_header header{7, true, 0xAF, 0xFF, 0x02, 1};
+  jay::frame_header header{ 7, true, 0xAF, 0xFF, 0x02, 1 };
 
-  ///TODO: Make it possible to get the entire frame header
-  ///TODO: Make sure that the extended error and rtr bits are set
-  ///correctly for each constructor
+  /// TODO: Make it possible to get the entire frame header
+  /// TODO: Make sure that the extended error and rtr bits are set
+  /// correctly for each constructor
   ASSERT_FALSE(header.is_broadcast());
   ASSERT_EQ(header.id(), 0x1D'AF'FF'02);
   ASSERT_EQ(header.priority(), 7);
@@ -30,8 +29,7 @@ TEST(Jay_Header_Test, Jay_Header_Getters_Tests)
   ASSERT_EQ(header.source_adderess(), 0x02);
   ASSERT_EQ(header.payload_length(), 1);
 
-
-  jay::frame_header header1{10, 0x0FAF0, 0x64, 5};
+  jay::frame_header header1{ 10, 0x0FAF0, 0x64, 5 };
 
   ASSERT_TRUE(header1.is_broadcast());
   ASSERT_EQ(header1.id(), 0x1C'FA'F0'64);
@@ -43,8 +41,7 @@ TEST(Jay_Header_Test, Jay_Header_Getters_Tests)
   ASSERT_EQ(header1.source_adderess(), 0x64);
   ASSERT_EQ(header1.payload_length(), 5);
 
-
-  jay::frame_header header2{0xFD'FF'FF'FF};
+  jay::frame_header header2{ 0xFD'FF'FF'FF };
 
   ASSERT_TRUE(header2.is_broadcast());
   ASSERT_EQ(header2.id(), 0x1D'FF'FF'FF);
@@ -55,12 +52,11 @@ TEST(Jay_Header_Test, Jay_Header_Getters_Tests)
   ASSERT_EQ(header2.pgn(), 0x00'01'FF'FF);
   ASSERT_EQ(header2.source_adderess(), 0xFF);
   ASSERT_EQ(header2.payload_length(), 0);
-
 }
 
 TEST(Jay_Header_Test, Jay_Header_Setters_Tests)
 {
-  jay::frame_header header{7, true, 0xAF, 0xFF, 0x02, 1};
+  jay::frame_header header{ 7, true, 0xAF, 0xFF, 0x02, 1 };
 
   header.id(0x1D'E8'A5'01);
   ASSERT_EQ(0x1D'E8'A5'01, header.id());
@@ -80,11 +76,11 @@ TEST(Jay_Header_Test, Jay_Header_Setters_Tests)
 
 TEST(Jay_Header_Test, Jay_Header_Other_Tests)
 {
-  ///TODO: Test if the extended error and rtr bits are set correctly
-  jay::frame_header header{3, false, 0xBB, 0xFE, 0xFE, 8};
+  /// TODO: Test if the extended error and rtr bits are set correctly
+  jay::frame_header header{ 3, false, 0xBB, 0xFE, 0xFE, 8 };
 
-  uint32_t source_address{100};
-  uint32_t destination_address{0x97};
+  uint32_t source_address{ 100 };
+  uint32_t destination_address{ 0x97 };
 
   header.source_adderess(source_address);
   header.pdu_specific(destination_address);

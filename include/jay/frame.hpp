@@ -12,52 +12,50 @@
 
 #pragma once
 
-//C++
+// C++
 #include <array>
-#include <string>
 #include <sstream>
+#include <string>
 
-//Libraries
+// Libraries
 #include "header.hpp"
 #include "name.hpp"
 
-//Linux
+// Linux
 #include <linux/can.h>
 
 
 ///
-///TODO: Is this class realy needed. Could just use a linux can_frame instead?
-///TODO: Only realy need to read from the header data.
-///TODO: This class might genereate confusion regarding payload size?
+/// TODO: Is this class realy needed. Could just use a linux can_frame instead?
+/// TODO: Only realy need to read from the header data.
+/// TODO: This class might genereate confusion regarding payload size?
 ///
 
-namespace jay
-{
+namespace jay {
 
-  using payload = std::array<std::uint8_t, 8>;
+using payload = std::array<std::uint8_t, 8>;
 
 /**
- * 
-*/
+ *
+ */
 struct frame
 {
 
   /**
    * Constructor
-  */
+   */
   frame() = default;
 
   /**
    * Constructor
    * @param in_header
    * @param in_payload
-  */
-  frame(const frame_header& in_header, const payload& in_payload) :
-    header(in_header), payload(in_payload)
+   */
+  frame(const frame_header &in_header, const payload &in_payload) : header(in_header), payload(in_payload)
   {
-    //Cant use this as size will allways be 8 and that will not match
-    //All usecases
-    //header.SetPayloadLength(in_payload.size());
+    // Cant use this as size will allways be 8 and that will not match
+    // All usecases
+    // header.SetPayloadLength(in_payload.size());
   }
 
 
@@ -70,11 +68,8 @@ struct frame
    * Used to get the address of devices on the network
    * @note sets PS to NO_ADDR thereby requesting address of all devices
    * @return address request j1939 frame
-  */
-  static frame make_address_request()
-  {
-    return make_address_request(J1939_NO_ADDR);
-  }
+   */
+  static frame make_address_request() { return make_address_request(J1939_NO_ADDR); }
 
   /**
    * Create an address request j1939 frame
@@ -82,41 +77,40 @@ struct frame
    * @param PS of the message, when not NO_ADDR request address claim
    * from a specific address
    * @return address request j1939 frame
-  */
+   */
   static frame make_address_request(std::uint8_t PS)
   {
-    return { frame_header(static_cast<std::uint8_t>(6), false, PF_REQUEST, 
-      PS, J1939_IDLE_ADDR, 3), {0x00, 0xEE, 0x00} };
+    return { frame_header(static_cast<std::uint8_t>(6), false, PF_REQUEST, PS, J1939_IDLE_ADDR, 3),
+      { 0x00, 0xEE, 0x00 } };
   }
-  
+
   /**
    * Create an address claim j1939 frame
    * @param name of the device
    * @param address to claim
    * @return address claim j1939 frame
-  */
+   */
   static frame make_address_claim(jay::name name, std::uint8_t address)
   {
-    ///TODO: Replace payload with name type
-    return {frame_header(static_cast<std::uint8_t>(6), false, PF_ADDRESS_CLAIM, 
-      J1939_NO_ADDR, address, 8), name};
+    /// TODO: Replace payload with name type
+    return { frame_header(static_cast<std::uint8_t>(6), false, PF_ADDRESS_CLAIM, J1939_NO_ADDR, address, 8), name };
   }
 
   /**
    * @brief Creates a cannot claim frame
    * @param name of the device
-   * @return address cannot claim j1939 frame 
+   * @return address cannot claim j1939 frame
    */
   static frame make_cannot_claim(jay::name name)
   {
-    ///TODO: Replace payload with name type
-    return {frame_header(static_cast<std::uint8_t>(6), false, PF_ADDRESS_CLAIM, 
-      J1939_NO_ADDR, J1939_IDLE_ADDR, 8) , name};
+    /// TODO: Replace payload with name type
+    return { frame_header(static_cast<std::uint8_t>(6), false, PF_ADDRESS_CLAIM, J1939_NO_ADDR, J1939_IDLE_ADDR, 8),
+      name };
   }
 
-  ///TODO: Look into cmmanded address command
+  /// TODO: Look into cmmanded address command
 
-  ///TODO: Create statics for other known frame types
+  /// TODO: Create statics for other known frame types
 
 
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
@@ -126,14 +120,13 @@ struct frame
   /**
    * Converts object to string
    * @return struct as string
-  */
+   */
   std::string to_string() const
   {
     std::stringstream ss{};
     ss << std::hex << header.id() << ":";
-    for(auto byte : payload)
-    {
-      ///Use + as uint8 is alias for char, the ouput is writen as sybols instead of number
+    for (auto byte : payload) {
+      /// Use + as uint8 is alias for char, the ouput is writen as sybols instead of number
       ss << std::hex << static_cast<std::uint32_t>(byte) << "'";
     }
     return ss.str();
@@ -149,13 +142,13 @@ struct frame
     return std::move(frame);
   }
 
-  ///TODO: Make into class and make sure that payload size change is updated in header
+  /// TODO: Make into class and make sure that payload size change is updated in header
 
   frame_header header{};
   jay::payload payload{};
 };
 
-} // namespace jay
+}// namespace jay
 
 
 #endif

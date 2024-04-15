@@ -188,14 +188,10 @@ bool J1939Connection::CheckAddress() const
   /// Feel like these two last are more outliers
 
   // If message is for local name, but we dont care who its from
-  if (!target_name_ && local_name_) {
-    return network_.get_address(*local_name_) == buffer_.header.pdu_specific();
-  }
+  if (!target_name_ && local_name_) { return network_.get_address(*local_name_) == buffer_.header.pdu_specific(); }
 
   // Check that the message is from our intended target but we dont care if its for us
-  if (target_name_ && !local_name_) {
-    return network_.get_address(*target_name_) == buffer_.header.source_adderess();
-  }
+  if (target_name_ && !local_name_) { return network_.get_address(*target_name_) == buffer_.header.source_adderess(); }
 
   return false;
 }
