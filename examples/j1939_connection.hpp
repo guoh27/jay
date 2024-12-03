@@ -38,42 +38,42 @@
  * @todo look into using different types of queues to store
  * outgoing buffers such as timed queues and so on
  */
-class J1939Connection : public std::enable_shared_from_this<J1939Connection>
+class j1939_connection : public std::enable_shared_from_this<j1939_connection>
 {
 public:
   /**
    * @brief Struct containing callbacks for J1939Connection
    */
-  struct Callbacks
+  struct callbacks
   {
     // Alias
-    using J1939OnSelf = std::function<void(J1939Connection *)>;
-    using J1939OnError = std::function<void(const std::string, const boost::system::error_code)>;
-    using J1939OnFrame = std::function<void(jay::frame)>;
+    using on_self_t = std::function<void(j1939_connection *)>;
+    using on_error_t = std::function<void(const std::string, const boost::system::error_code)>;
+    using on_frame_t = std::function<void(jay::frame)>;
 
     /**
      * @brief Callback for when connection is stated
      * @note is optional
      */
-    J1939OnSelf on_start;
+    on_self_t on_start;
 
     /**
      * @brief Callback for when connection is destroyed
      * @note is optional
      */
-    J1939OnSelf on_destroy;
+    on_self_t on_destroy;
 
     /**
      * @brief Callback for when data is recieved
      * @note is required
      */
-    J1939OnFrame on_read;
+    on_frame_t on_read;
 
     /**
      * @brief Callback for when data is sent
      * @note is optional
      */
-    J1939OnFrame on_send;
+    on_frame_t on_send;
 
     /**
      * @brief Callback for when an error occurs
@@ -82,7 +82,7 @@ public:
      * an error code detailing the error.
      * @note is required
      */
-    J1939OnError on_error;
+    on_error_t on_error;
   };
 
   /**
@@ -91,7 +91,7 @@ public:
    * @param io_context for performing async io operation
    * @param network containing address name pairs
    */
-  J1939Connection(boost::asio::io_context &io_context, const jay::network &network);
+  j1939_connection(boost::asio::io_context &io_context, const jay::network &network);
 
   /**
    * @brief Construct a new J1939Connection object
@@ -100,7 +100,7 @@ public:
    * @param network containing address name pairs
    * @param callbacks for generated events
    */
-  J1939Connection(boost::asio::io_context &io_context, const jay::network &network, Callbacks &&callbacks);
+  j1939_connection(boost::asio::io_context &io_context, const jay::network &network, callbacks &&callbacks);
 
   /**
    * @brief Construct a new J1939Connection object
@@ -111,16 +111,16 @@ public:
    * @param local_name that this connection is sending messages from
    * @param target_name that this connection is sending messages to
    */
-  J1939Connection(boost::asio::io_context &io_context,
+  j1939_connection(boost::asio::io_context &io_context,
     const jay::network &network,
-    Callbacks &&callbacks,
+    callbacks &&callbacks,
     std::optional<jay::name> local_name,
     std::optional<jay::name> target_name);
 
   /**
    * @brief Destroy the J1939Connection object
    */
-  ~J1939Connection();
+  ~j1939_connection();
 
   /**
    * @brief Open an j1939 endpoint
@@ -129,52 +129,54 @@ public:
    * @return true if opened endpoint
    * @return false if failed to open endpoint
    */
-  bool Open(const std::vector<canary::filter> &filters);
+  [[nodiscard]] bool open(const std::vector<canary::filter> &filters);
 
   /**
    * Listen for incomming j1939 frames
    */
-  void Start();
+  void start();
 
   /// ##################### Set/Get ##################### ///
+
+  inline void bind_callbacks(const callbacks &callbacks) noexcept { callbacks_ = callbacks; }
 
   /**
    * @brief Set the Callbacks object
    * @param callbacks
    */
-  void SetCallbacks(Callbacks &&callbacks) { callbacks_ = std::move(callbacks); }
+  inline void bind_callbacks(callbacks &&callbacks) noexcept { callbacks_ = std::move(callbacks); }
 
   /**
    * @brief Set the local j1939 name
    * @param name of the device this connection is sending
    * messages from, used for setting source address in messages
    */
-  void SetLocalName(jay::name name) { local_name_ = name; }
+  inline void local_name(const jay::name name) noexcept { local_name_ = name; }
 
   /**
    * @brief Set the Target Name object
    * @param name of the device this connection is sending
    * messages to, used for setting destination address in messages
    */
-  void SetTargetName(jay::name name) { target_name_ = name; }
+  inline void target_name(const jay::name name) noexcept { target_name_ = name; }
 
   /**
    * Get local name on this connection
    * @return optional name, is null_opt if none was set
    */
-  std::optional<jay::name> GetLocalName() const { return local_name_; }
+  [[nodiscard]] inline std::optional<jay::name> local_name() const noexcept { return local_name_; }
 
   /**
    * Get target name on this connection
    * @return optional name, is null_opt if none was set
    */
-  std::optional<jay::name> GetTargeName() const { return target_name_; }
+  [[nodiscard]] inline std::optional<jay::name> target_name() const noexcept { return target_name_; }
 
   /**
    * @brief Get the Network reference
    * @return jay::network&
    */
-  const jay::network &GetNetwork() const { return network_; }
+  [[nodiscard]] inline const jay::network &network() const noexcept { return network_; }
 
 
   /// ##################### WRITE ##################### ///
@@ -183,7 +185,7 @@ public:
    * Send a frame to socket without any checks
    * @param j1939_frame that will be sent
    */
-  void SendRaw(const jay::frame &j1939_frame);
+  void send_raw(const jay::frame &j1939_frame);
 
   /**
    * Send a broadcast frame to the socket
@@ -194,7 +196,7 @@ public:
    * and address
    * are not available
    */
-  void SendBroadcast(jay::frame &j1939_frame);
+  void broadcast(jay::frame &j1939_frame);
 
   /**
    * Send frame to connected controller application
@@ -204,7 +206,7 @@ public:
    * @throw std::invalid_argument if no connected controller
    * app name has been set
    */
-  void Send(jay::frame &j1939_frame);
+  void send(jay::frame &j1939_frame);
 
   /**
    * Send frame to specific controller application
@@ -215,34 +217,41 @@ public:
    * @throw std::invalid_argument if source and destination addresses
    * are not available
    */
-  void SendTo(const uint64_t destination, jay::frame &j1939_frame);
+  void send_to(const jay::name destination, jay::frame &j1939_frame);
 
 private:
   /**
    * @brief Called when an event failes
    * @param what failed
-   * @param ec for the error
+   * @param error_code for the error
    */
-  void OnError(char const *what, boost::system::error_code ec);
+  void on_error(char const *what, boost::system::error_code error_code);
 
   /**
    * Read data from socket
    */
-  void Read();
+  void read();
 
   /**
    * Write frames from qeueu to socket
    */
-  void Write();
+  void write();
 
-  bool CheckAddress() const;
+  /**
+   * @brief Check if the read frame is from a valid address
+   * given the local and target name
+   *
+   * @return true if frame can be accepted
+   * @return false if frame should be discarded
+   */
+  [[nodiscard]] bool validate_address() const;
 
 private:
   // Injected
 
   canary::raw::socket socket_; /**< raw CAN-bus socket */
   const jay::network &network_; /**< Network reference for querying network for addresses */
-  Callbacks callbacks_; /**< Callbacks for generated events */
+  callbacks callbacks_; /**< Callbacks for generated events */
 
   std::optional<jay::name> local_name_{}; /**< Optional local j1939 name */
   std::optional<jay::name> target_name_{}; /**< Optional targeted j1939 name */

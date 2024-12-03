@@ -7,6 +7,8 @@
 // Official repository: https://github.com/bjorn-jaes/jay
 //
 
+/// TODO: Move on new over to network test instead then delete this class and test
+
 #include <gtest/gtest.h>
 
 #include "../include/jay/network_manager.hpp"
@@ -42,7 +44,7 @@ public:
   std::queue<std::pair<jay::name, std::uint8_t>> new_controller_queue{};
 
   jay::network j1939_network{ "vcan0" };
-  jay::network_manager net_mng{ j1939_network };
+  jay::service net_mng{ j1939_network };
 };
 
 TEST_F(NetworkManagerTest, Jay_Network_Manager_Test)
@@ -51,10 +53,10 @@ TEST_F(NetworkManagerTest, Jay_Network_Manager_Test)
   boost::asio::io_context context;
   std::queue<jay::frame> frame_queue{};
 
-  jay::address_manager address_one{ context,
+  jay::address_claimer address_one{ context,
     { 0xAFFU },
     j1939_network,
-    jay::address_manager::callbacks{ [](jay::name /*name*/, std::uint8_t /*address*/)
+    jay::address_claimer::callbacks{ [](jay::name /*name*/, std::uint8_t /*address*/)
                                        -> void {// On address
                                                 // std::cout << "Controller claimed: " << std::hex <<
                                                 //   static_cast<uint64_t>(name) << ", address: " << std::hex <<
@@ -71,10 +73,10 @@ TEST_F(NetworkManagerTest, Jay_Network_Manager_Test)
         std::cout << what << " : " << error.message() << std::endl;
       } } };
 
-  jay::address_manager address_two{ context,
+  jay::address_claimer address_two{ context,
     { 0xBFFU },
     j1939_network,
-    jay::address_manager::callbacks{ [](jay::name /*name*/, std::uint8_t /*address*/)
+    jay::address_claimer::callbacks{ [](jay::name /*name*/, std::uint8_t /*address*/)
                                        -> void {// On address
                                                 // std::cout << "Controller claimed: " << std::hex <<
                                                 //   static_cast<uint64_t>(name) << ", address: " << std::hex <<

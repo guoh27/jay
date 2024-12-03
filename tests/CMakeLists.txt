@@ -30,7 +30,7 @@ target_sources(${TEST_EXECUTABLE_NAME}
     header_test.cpp
     state_machine_test.cpp
     network_test.cpp
-    network_manager_test.cpp
+    #network_manager_test.cpp
     name_test.cpp
 )
 

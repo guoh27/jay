@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2022 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
+// Copyright (c) 2024 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -65,22 +65,14 @@ struct frame
 
   /**
    * Create an address request j1939 frame
-   * Used to get the address of devices on the network
-   * @note sets PS to NO_ADDR thereby requesting address of all devices
+   * Used to get the the name address pairs on the network
+   * @param pdu_specific default is J1939_NO_ADDR for global request, otherwise the address to request
+   * the name of.
    * @return address request j1939 frame
    */
-  static frame make_address_request() { return make_address_request(J1939_NO_ADDR); }
-
-  /**
-   * Create an address request j1939 frame
-   * Used to get the address of a devices on the network
-   * @param PS of the message, when not NO_ADDR request address claim
-   * from a specific address
-   * @return address request j1939 frame
-   */
-  static frame make_address_request(std::uint8_t PS)
+  [[nodiscard]] static frame make_address_request(const std::uint8_t pdu_specific = J1939_NO_ADDR) noexcept
   {
-    return { frame_header(static_cast<std::uint8_t>(6), false, PF_REQUEST, PS, J1939_IDLE_ADDR, 3),
+    return { frame_header(static_cast<std::uint8_t>(6), false, PF_REQUEST, pdu_specific, J1939_IDLE_ADDR, 3),
       { 0x00, 0xEE, 0x00 } };
   }
 
@@ -90,9 +82,8 @@ struct frame
    * @param address to claim
    * @return address claim j1939 frame
    */
-  static frame make_address_claim(jay::name name, std::uint8_t address)
+  [[nodiscard]] static frame make_address_claim(const jay::name name, const std::uint8_t address) noexcept
   {
-    /// TODO: Replace payload with name type
     return { frame_header(static_cast<std::uint8_t>(6), false, PF_ADDRESS_CLAIM, J1939_NO_ADDR, address, 8), name };
   }
 
@@ -101,9 +92,8 @@ struct frame
    * @param name of the device
    * @return address cannot claim j1939 frame
    */
-  static frame make_cannot_claim(jay::name name)
+  [[nodiscard]] static frame make_cannot_claim(const jay::name name) noexcept
   {
-    /// TODO: Replace payload with name type
     return { frame_header(static_cast<std::uint8_t>(6), false, PF_ADDRESS_CLAIM, J1939_NO_ADDR, J1939_IDLE_ADDR, 8),
       name };
   }
@@ -121,7 +111,7 @@ struct frame
    * Converts object to string
    * @return struct as string
    */
-  std::string to_string() const
+  [[nodiscard]] std::string to_string() const
   {
     std::stringstream ss{};
     ss << std::hex << header.id() << ":";
@@ -135,7 +125,7 @@ struct frame
   /**
    *TODO: Not needed?
    */
-  static can_frame to_can(frame j1939_frame)
+  [[nodiscard]] static can_frame to_can(frame j1939_frame)
   {
     can_frame frame{};
     std::memcpy(&frame, &j1939_frame, sizeof(j1939_frame));

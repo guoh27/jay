@@ -9,21 +9,21 @@
 
 #include <gtest/gtest.h>
 
-#include "../include/jay/address_manager.hpp"
+#include "../include/jay/address_claimer.hpp"
 
 // C++
 #include <chrono>
 #include <iostream>
 #include <queue>
 
-class AddressManagerTest : public testing::Test
+class AddressClaimerTest : public testing::Test
 {
 protected:
   //
-  AddressManagerTest()
+  AddressClaimerTest()
   {
     /// Outputs used for debugging
-    addr_mng.set_callbacks(jay::address_manager::callbacks{
+    addr_mng.bind_callbacks(jay::address_claimer::callbacks{
       [](auto /*name*/, auto /*address*/) -> void {// On address
                                                    // std::cout << "Controller claimed: " << std::hex <<
                                                    //  static_cast<uint64_t>(name) << ", address: " << std::hex <<
@@ -42,7 +42,7 @@ protected:
   }
 
   //
-  virtual ~AddressManagerTest() {}
+  virtual ~AddressClaimerTest() {}
 
   //
   virtual void SetUp() override
@@ -51,24 +51,25 @@ protected:
   }
 
   //
-  virtual void TearDown() override { j1939_network.clear(); }
+  virtual void TearDown() override { vcan0.clear(); }
 
 public:
   std::queue<jay::frame> frame_queue{};
 
   boost::asio::io_context io{};
   jay::name local_name{ 0xFF };
-  jay::network j1939_network{ "vcan0" };
-  jay::address_manager addr_mng{ io, local_name, j1939_network };
+  jay::network vcan0{ "vcan0" };
+  jay::address_claimer addr_mng{ io, local_name, vcan0 };
 };
 
-TEST_F(AddressManagerTest, Jay_Address_Manager_Test)
+/// TODO: Split into multiple tests
+TEST_F(AddressClaimerTest, Jay_Address_Manager_Test)
 {
   std::cout << "This test will take up to a min please be patient..." << std::endl;
   ASSERT_EQ(frame_queue.size(), 0);
 
   // Return cannot claim address
-  addr_mng.address_request(jay::address_claimer::ev_address_request{});
+  addr_mng.process(jay::frame::make_address_request());
 
   // Enought time for timeout event to trigger
   io.run_for(std::chrono::milliseconds(260));
@@ -84,13 +85,21 @@ TEST_F(AddressManagerTest, Jay_Address_Manager_Test)
   frame_queue.pop();
 
   // Does nothing as we have not started claiming address
+  ASSERT_EQ(vcan0.name_size(), 0);
+  ASSERT_EQ(vcan0.address_size(), 0);
+
   jay::name controller_1{ 0xa00c81045a20021b };
   std::uint8_t address_1{ 0x10U };
-  addr_mng.address_claim(jay::address_claimer::ev_address_claim{ controller_1, address_1 });
+  addr_mng.process(jay::frame::make_address_claim(controller_1, address_1));
+
 
   // Enought time for timeout event to trigger
   io.run_for(std::chrono::milliseconds(260));
   io.restart();
+
+  // Address claim inserted into network
+  ASSERT_EQ(vcan0.name_size(), 1);
+  ASSERT_EQ(vcan0.address_size(), 1);
 
   // Should claim address 0x1
   std::uint8_t address_0{ 0x00U };
@@ -112,12 +121,12 @@ TEST_F(AddressManagerTest, Jay_Address_Manager_Test)
   frame_queue.pop();
 
   /// Confirm name and address is registeded in network
-  ASSERT_TRUE(j1939_network.in_network(local_name));
-  ASSERT_FALSE(j1939_network.available(address_0));
-  ASSERT_EQ(j1939_network.get_address(local_name), address_0);
+  ASSERT_TRUE(vcan0.in_network(local_name));
+  ASSERT_FALSE(vcan0.available(address_0));
+  ASSERT_EQ(vcan0.find_address(local_name), address_0);
 
   // Should return address claim 1 frame
-  addr_mng.address_request(jay::address_claimer::ev_address_request{});
+  addr_mng.process(jay::frame::make_address_request());
 
   io.run_for(std::chrono::milliseconds(20));
   io.restart();
@@ -131,10 +140,10 @@ TEST_F(AddressManagerTest, Jay_Address_Manager_Test)
 
   for (std::uint8_t i = 0; i < J1939_MAX_UNICAST_ADDR; i++) {
     // Insert claim into network
-    j1939_network.insert(i, i);
+    vcan0.try_address_claim(i, i);
 
     // Conficting claim should change to new address
-    addr_mng.address_claim(jay::address_claimer::ev_address_claim{ jay::name{ i }, static_cast<std::uint8_t>(i) });
+    addr_mng.process(jay::frame::make_address_claim(jay::name{ i }, static_cast<std::uint8_t>(i)));
 
     io.run_for(std::chrono::milliseconds(260));// Give timeout time to trigger
     io.restart();
@@ -146,21 +155,21 @@ TEST_F(AddressManagerTest, Jay_Address_Manager_Test)
     ASSERT_EQ(frame.header.source_adderess(), i + 1);
     frame_queue.pop();
 
-    ASSERT_TRUE(j1939_network.in_network(local_name));
-    ASSERT_EQ(j1939_network.get_address(local_name), i + 1);
+    ASSERT_TRUE(vcan0.in_network(local_name));
+    ASSERT_EQ(vcan0.find_address(local_name), i + 1);
   }
 
   // Insert claim into network
-  j1939_network.insert(J1939_MAX_UNICAST_ADDR, J1939_MAX_UNICAST_ADDR);
+  vcan0.try_address_claim(J1939_MAX_UNICAST_ADDR, J1939_MAX_UNICAST_ADDR);
 
   // Conficting claim should change to new address
-  addr_mng.address_claim(jay::address_claimer::ev_address_claim{
-    jay::name{ J1939_MAX_UNICAST_ADDR }, static_cast<std::uint8_t>(J1939_MAX_UNICAST_ADDR) });
+  addr_mng.process(jay::frame::make_address_claim(
+    jay::name{ J1939_MAX_UNICAST_ADDR }, static_cast<std::uint8_t>(J1939_MAX_UNICAST_ADDR)));
 
   io.run_for(std::chrono::milliseconds(260));// Give timeout time to trigger
   io.restart();
 
-  ASSERT_TRUE(j1939_network.full());
+  ASSERT_TRUE(vcan0.is_full());
 
   // Check cannot claim address frame
   ASSERT_EQ(frame_queue.size(), 1);

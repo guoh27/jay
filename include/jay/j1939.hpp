@@ -13,25 +13,6 @@
 // C++
 #include <cstdint>//std::uint8_t, std::uint32_t, std::uint64_t
 
-namespace jay {
-/*
- * Consts that are not included by linux j1939.h but are usefull to have
- */
-
-/**
- * Max pdu format (pf) a addessable message can have
- * higher means that the message can only be broadcast (PDU2)
- * and the PS field contains a Group Extension.
- */
-constexpr std::uint8_t PF_PDU1_MAX{ 0xEFU };
-
-// Address Related consts
-constexpr std::uint8_t PF_ADDRESS_CLAIM{ 0xEEU };
-constexpr std::uint8_t PF_REQUEST{ 0xEAU };
-constexpr std::uint8_t PF_ACKNOWLEDGE{ 0xE8U };
-
-}// namespace jay
-
 /// TODO: Which should be default on?
 /// TODO: Add integration with cmake? target_compile_definitions(my_target PRIVATE FOO=1 BAR=1)
 
@@ -42,7 +23,7 @@ constexpr std::uint8_t PF_ACKNOWLEDGE{ 0xE8U };
 #else
 
 /*
- * Highest usable uniqu addresses (253), a total of 254
+ * Highest usable unique addresses (253), a total of 254
  * addresses can exist in a network 0 - 253
  */
 constexpr std::uint8_t J1939_MAX_UNICAST_ADDR{ 0xFDU };
@@ -130,5 +111,24 @@ typedef std::uint8_t priority_t;
 typedef std::uint64_t name_t;
 
 #endif// LINUX_J1939
+
+namespace jay {
+/*
+ * Consts that are not included by linux j1939.h but are usefull to have
+ */
+
+/**
+ * Max pdu format (pf) a addessable message can have
+ * higher means that the message can only be broadcast (PDU2)
+ * and the PS field contains a Group Extension.
+ */
+constexpr std::uint8_t PF_PDU1_MAX{ 0xEFU };
+
+// Address Related consts
+constexpr std::uint8_t PF_ADDRESS_CLAIM{ 0xEEU };
+constexpr std::uint8_t PF_REQUEST{ 0xEAU };
+constexpr std::uint8_t PF_ACKNOWLEDGE{ 0xE8U };
+
+}// namespace jay
 
 #endif// JAY_J1939_H

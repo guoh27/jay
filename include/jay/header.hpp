@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2022 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
+// Copyright (c) 2024 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -90,10 +90,10 @@ public:
     const std::uint8_t source_address,
     const std::size_t payload = 0)
     : frame_header(priority,
-      (static_cast<std::uint32_t>(data_page) << 16) | (static_cast<std::uint32_t>(pdu_format) << 8)
-        | (static_cast<std::uint32_t>(pdu_specific)),
-      source_address,
-      payload)
+        (static_cast<std::uint32_t>(data_page) << 16) | (static_cast<std::uint32_t>(pdu_format) << 8)
+          | (static_cast<std::uint32_t>(pdu_specific)),
+        source_address,
+        payload)
   {}
 
   /**
@@ -110,7 +110,7 @@ public:
     const std::uint8_t source_address,
     const std::size_t payload = 0)
     : frame_header((std::clamp(static_cast<std::uint32_t>(priority), 0U, 7U) << 26) | (pgn << 8) | source_address,
-      payload)
+        payload)
   {}
 
   /**
@@ -131,8 +131,9 @@ public:
   /**
    * @brief  Sets the J1939 ID of this frame. J1939 IDs are 29-bit integers
    * @param id of the header
+   * @return reference to self
    */
-  frame_header &id(const std::uint32_t id)
+  inline frame_header &id(const std::uint32_t id) noexcept
   {
     header_.id(id);
     return *this;
@@ -141,9 +142,10 @@ public:
   /**
    * @brief Set the priority of the j1939 frame
    * @param priority, ranging from 0 highest and 7 lowest
+   * @return reference to self
    * @note function will clamp priority to a value between 0 - 7
    */
-  frame_header &priority(const priority_t priority)
+  inline frame_header &priority(const priority_t priority) noexcept
   {
     id((id() & ~prio_mask) | (std::clamp(static_cast<std::uint32_t>(priority), 0U, 7U) << 26));
     return *this;
@@ -153,8 +155,9 @@ public:
    * @brief Set the data page bit to 0 or 1, the bit expands the
    * PDU address by adding another bit of possible addresses
    * @param data_page_bit between 0 and 1, is clamped if needed.
+   * @return reference to self
    */
-  frame_header &data_page(const bool data_page_bit)
+  inline frame_header &data_page(const bool data_page_bit) noexcept
   {
     // data_page_bit_ = (data_page_bit) ? 1 : 0;
     id((id() & ~data_page_mask) | (static_cast<std::uint32_t>(data_page_bit ? 1 : 0) << 24));
@@ -166,13 +169,14 @@ public:
    * @param pdu_format (PF), if the pdu format is 0 - 239 then the frame
    * is peer-to-peer communication and the PS is the destination adress.
    * If PF is 240-255 then the frame is broadcasted and PS is a PSU group extension.
+   * @return reference to self
    * @note SAE and Proprietary usage:
    * 0x00 − 0xEE: Peer-to-Peer messages defined by SAE
    * 0xEF – 0xEF: Peer-to-Peer message for proprietary use
    * 0xF0 – 0xFE: Broadcast messages defined by SAE
    * 0xFF – 0xFF: Broadcast messages for proprietary use
    */
-  frame_header &pdu_format(const std::uint8_t pdu_format)
+  inline frame_header &pdu_format(const std::uint8_t pdu_format) noexcept
   {
     id((id() & ~pf_mask) | (static_cast<std::uint32_t>(pdu_format) << 16));
     return *this;
@@ -182,8 +186,9 @@ public:
    * @brief Set the pdu specific (PS)
    * @param pdu_specific (PS) is either the destination address if the PDU format (PF) is
    * a peer-to-peer massage or a PSU group extention if the PF is a broadcast message.
+   * @return reference to self
    */
-  frame_header &pdu_specific(const std::uint8_t pdu_specific)
+  inline frame_header &pdu_specific(const std::uint8_t pdu_specific) noexcept
   {
     id((id() & ~ps_mask) | (static_cast<std::uint32_t>(pdu_specific) << 8));
     return *this;
@@ -192,8 +197,9 @@ public:
   /**
    * @brief Set the source address of the can frame.
    * @param source_address of the frame
+   * @return reference to self
    */
-  frame_header &source_adderess(const std::uint8_t source_address)
+  inline frame_header &source_adderess(const std::uint8_t source_address) noexcept
   {
     id((id() & ~ad_mask) | static_cast<std::uint32_t>(source_address));
     return *this;
@@ -202,8 +208,9 @@ public:
   /**
    * @brief Set length of the data that is assiociated with the header
    * @param source_address of the frame
+   * @return reference to self
    */
-  frame_header &payload_length(const std::size_t length)
+  inline frame_header &payload_length(const std::size_t length) noexcept
   {
     header_.payload_length(length);
     return *this;
@@ -217,19 +224,25 @@ public:
    * @brief Get the header id
    * @return 29 bit header id
    */
-  std::uint32_t id() const noexcept { return header_.id(); }
+  [[nodiscard]] inline std::uint32_t id() const noexcept { return header_.id(); }
 
   /**
    * @brief Get the priority of the j1939 frame
    * @return priority of frame, 0 highest and 7 lowest
    */
-  priority_t priority() const noexcept { return static_cast<priority_t>((header_.id() & prio_mask) >> 26); }
+  [[nodiscard]] inline priority_t priority() const noexcept
+  {
+    return static_cast<priority_t>((header_.id() & prio_mask) >> 26);
+  }
 
   /**
    * @brief Get the data page bit
    * @return data page bit, 0 if not set, 1 if set
    */
-  std::uint8_t data_page() const noexcept { return static_cast<std::uint8_t>((header_.id() & data_page_mask) >> 24); }
+  [[nodiscard]] inline std::uint8_t data_page() const noexcept
+  {
+    return static_cast<std::uint8_t>((header_.id() & data_page_mask) >> 24);
+  }
 
   /**
    * @brief Get the 18-bit parameter group number (PGN) of the header
@@ -238,7 +251,7 @@ public:
    * @note if the pdu format is global then pdu specific is returned with pgn if not then
    * pdu specific bytes are set to 0x00.
    */
-  pgn_t pgn() const noexcept
+  [[nodiscard]] inline pgn_t pgn() const noexcept
   {
     auto pgn = (header_.id() & pgn_mask);
     if (!is_broadcast()) { pgn &= ~ps_mask; }
@@ -249,7 +262,7 @@ public:
    * @brief Get the PDU Format data of the J1939 frame.
    * @return 8bit PDU Format
    */
-  std::uint8_t pdu_format() const noexcept
+  [[nodiscard]] inline std::uint8_t pdu_format() const noexcept
   {
     return static_cast<std::uint8_t>(header_.id() >> 16);// Return bits 23 - 16, third byte
   }
@@ -260,7 +273,7 @@ public:
    * the destination address of the frame
    * @return 8bit PDU Specifier
    */
-  std::uint8_t pdu_specific() const noexcept
+  [[nodiscard]] inline std::uint8_t pdu_specific() const noexcept
   {
     return static_cast<std::uint8_t>(header_.id() >> 8);// Return bits 15 - 8, second byte
   }
@@ -269,7 +282,7 @@ public:
    * @brief Get the source address of the frame
    * @return 8 bit soruce address
    */
-  std::uint8_t source_adderess() const noexcept
+  [[nodiscard]] inline std::uint8_t source_adderess() const noexcept
   {
     return static_cast<std::uint8_t>(header_.id());// Return bits 7 - 0, first byte
   }
@@ -278,7 +291,7 @@ public:
    * @brief Get length of the data that is assiociated with the header
    * @param source_address of the frame
    */
-  std::size_t payload_length() const noexcept { return header_.payload_length(); }
+  [[nodiscard]] inline std::size_t payload_length() const noexcept { return header_.payload_length(); }
 
   /// TODO: Add a tuple return for getting each component?
 
@@ -287,26 +300,31 @@ public:
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
 
   /**
-   * @brief Check if PDU format is broadcast or peer-to-peer
+   * @brief Check if PDU format (PF) is broadcast or peer-to-peer
    * @note This function does not take into cosideration the data page bit
    * @return true if broadcast,
-   * @return false if peer-to-peer
+   * @return false if addressable
    */
-  bool is_broadcast() const noexcept { return pdu_format() > PF_PDU1_MAX; }
+  [[nodiscard]] inline bool is_broadcast() const noexcept { return pdu_format() > PF_PDU1_MAX; }
 
   /**
    * @brief Check if the header contains an address request
    * @return true if the header is an address request
    * @return false if the header is not an address request
+   * @todo should this be a function here?
    */
-  bool is_request() const noexcept { return (pgn() & J1939_PGN_PDU1_MAX) == J1939_PGN_REQUEST; }
+  [[nodiscard]] inline bool is_request() const noexcept { return (pgn() & J1939_PGN_PDU1_MAX) == J1939_PGN_REQUEST; }
 
   /**
    * @brief Check if the header contains an address claim
    * @return true true if the header is an address claim
    * @return false false if the header is not an address claim
+   * @todo should this be a function here?
    */
-  bool is_claim() const noexcept { return (pgn() & J1939_PGN_PDU1_MAX) == J1939_PGN_ADDRESS_CLAIMED; }
+  [[nodiscard]] inline bool is_claim() const noexcept
+  {
+    return (pgn() & J1939_PGN_PDU1_MAX) == J1939_PGN_ADDRESS_CLAIMED;
+  }
 
 private:
   static constexpr std::uint32_t prio_mask = 0x1C'00'00'00U;
