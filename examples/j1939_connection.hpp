@@ -249,7 +249,7 @@ private:
 
   // Internal
 
-  jay::frame buffer_{}; /**< Incomming frame buffer */
+  jay::frame buffer_{}; /**< Incoming frame buffer */
   std::queue<jay::frame> queue_{}; /**< Outgoing  frame queue */
 };
 

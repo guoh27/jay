@@ -29,7 +29,7 @@ namespace jay {
  *
  * Self config. address = [63] ... [63] 1 bit, byte  #7
  * Industry group       = [62] ... [60] 3 bit, byte  #7
- * Device class instace = [59] ... [56] 4 bit, byte  #7
+ * Device class instance = [59] ... [56] 4 bit, byte  #7
  * Device class         = [55] ... [49] 7 bit, byte  #6
  * Reserved             = [48] ... [48] 1 bit, byte  #6
  * Function             = [47] ... [40] 8 bit, byte  #5
@@ -53,19 +53,19 @@ public:
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
 
   /**
-   * @brief Default consturctor, creates an empty ecu name
+   * @brief Default constructor, creates an empty ecu name
    */
   name() = default;
 
   /**
-   * @brief Constuct name from it all its elements
+   * @brief Construct name from it all its elements
    * @param id_num, identity number 21 bit
    * @param man_code, manufacturer Code 11 bit
    * @param ecu_inst, ecu instance 3 bit
    * @param func_inst, function instance 5 bit
    * @param func, function 8 bit
    * @param dev_cls, device class / vehicle system 7 bit
-   * @param dev_cls_inst, device class instace / vehicle system instance 4 bit
+   * @param dev_cls_inst, device class instance / vehicle system instance 4 bit
    * @param ind_grp, industry group 3 bit
    * @param slf_cfg_addr, self configuring address, 1 bit
    */
@@ -199,7 +199,7 @@ public:
    * @param dev_cls_inst - 4 bit Device class instace
    * @return reference to self
    */
-  name &device_class_instace(std::uint8_t dev_cls_inst) noexcept
+  name &device_class_instance(std::uint8_t dev_cls_inst) noexcept
   {
     name_ = (name_ & ~dev_cls_inst_mask)
             | ((static_cast<name_t>(dev_cls_inst) << dev_cls_inst_start_bit) & dev_cls_inst_mask);
@@ -282,10 +282,10 @@ public:
   }
 
   /**
-   * Get the Device class instace of the j1939 device name
-   * @return Device class instace, 4-bits
+   * Get the Device class instance of the j1939 device name
+   * @return Device class instance, 4-bits
    */
-  std::uint8_t device_class_instace() const noexcept
+  std::uint8_t device_class_instance() const noexcept
   {
     return static_cast<std::uint8_t>((name_ & dev_cls_inst_mask) >> dev_cls_inst_start_bit);
   }
@@ -337,10 +337,10 @@ public:
   };
 
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
-  //@                        Data Convertion                         @//
+  //@                        Data Conversion                         @//
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
 
-  // Dont require explicite static_cast when converting to int
+  // Dont require explicit static_cast when converting to int
   /**
    *  @brief Convert name to int value
    */

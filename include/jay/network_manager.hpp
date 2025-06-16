@@ -53,13 +53,13 @@ public:
   /**
    * @brief Processes address claim and address request frames
    * by tuning them into events and passing them to the state machine
-   * @note also registes new controllers into the newtork and updates their address
+   * @note also registers new controllers into the network and updates their address
    * @param frame containing and address claim or address request, other frames are ignored
    */
   void process(const jay::frame &frame)
   {
     if (frame.header.is_claim()) {
-      on_frame_address_claim(jay::name(frame.payload), frame.header.pdu_specific(), frame.header.source_adderess());
+      on_frame_address_claim(jay::name(frame.payload), frame.header.pdu_specific(), frame.header.source_address());
       return;
     }
 
@@ -73,7 +73,7 @@ public:
   std::size_t size() const { return name_manager_map.size(); }
 
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
-  //@                On Event callbacks implemntation                @//
+  //@                On Event callbacks implementation                @//
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
 
 private:
@@ -82,20 +82,20 @@ private:
    * @brief Inserts address claims into network and converts claim to state machine event
    *
    * @param name
-   * @param source_adderess
+   * @param source_address
    */
-  void on_frame_address_claim(jay::name name, std::uint8_t pdu_specific, std::uint8_t source_adderess)
+  void on_frame_address_claim(jay::name name, std::uint8_t pdu_specific, std::uint8_t source_address)
   {
     auto in = network_.in_network(name);
-    network_.insert(name, source_adderess);
+    network_.insert(name, source_address);
     if (!in) {// Insert controller then notify with callback
-      if (on_new_controller_) { on_new_controller_(name, source_adderess); }
+      if (on_new_controller_) { on_new_controller_(name, source_address); }
     }
 
-    jay::address_claimer::ev_address_claim claim{ name, source_adderess };
+    jay::address_claimer::ev_address_claim claim{ name, source_address };
 
     /// NOTE: While it is allowed to send address claims to a specific address
-    /// in allmost all cases it should be addressed to global 255
+    /// in almost all cases it should be addressed to global 255
 
     if (pdu_specific < J1939_IDLE_ADDR) {
       if (auto name = network_.get_name(pdu_specific); name.has_value()) {// Claim targeted at specific address

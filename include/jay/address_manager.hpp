@@ -28,7 +28,7 @@ namespace jay {
 
 /**
  * @brief Wrapper class for sml state machine that implements timeout events
- * as i have not found a way to implement timeouts internaly in address claimer
+ * as i have not found a way to implement timeouts internally in address claimer
  */
 class address_manager
 {
@@ -104,15 +104,15 @@ public:
 
   /**
    * @brief Start the address claiming process
-   * @param preffered_address to claim
+   * @param preferred_address to claim
    * @note event is posted to context
    */
-  void start_address_claim(std::uint8_t preffered_address)
+  void start_address_claim(std::uint8_t preferred_address)
   {
     if (!state_machine_.is(boost::sml::state<jay::address_claimer::st_no_address>)) { return; }
 
-    boost::asio::post(context_, [this, preffered_address]() -> void {
-      state_machine_.process_event(jay::address_claimer::ev_start_claim{ preffered_address });
+    boost::asio::post(context_, [this, preferred_address]() -> void {
+      state_machine_.process_event(jay::address_claimer::ev_start_claim{ preferred_address });
     });
   }
 
@@ -142,7 +142,7 @@ private:
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
 
   /**
-   * @brief Callbacks for when a state machine has aquired an address
+   * @brief Callbacks for when a state machine has acquired an address
    *
    * @param name of controller in state machine
    * @param address claimed by state machine

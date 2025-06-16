@@ -19,7 +19,7 @@ namespace jay {
  */
 
 /**
- * Max pdu format (pf) a addessable message can have
+ * Max pdu format (pf) a addressable message can have
  * higher means that the message can only be broadcast (PDU2)
  * and the PS field contains a Group Extension.
  */
@@ -42,7 +42,7 @@ constexpr std::uint8_t PF_ACKNOWLEDGE{ 0xE8U };
 #else
 
 /*
- * Highest usable uniqu addresses (253), a total of 254
+ * Highest usable unique addresses (253), a total of 254
  * addresses can exist in a network 0 - 253
  */
 constexpr std::uint8_t J1939_MAX_UNICAST_ADDR{ 0xFDU };
@@ -64,14 +64,14 @@ constexpr std::uint64_t J1939_NO_NAME{ 0UL };
 
 /*
  * Request PG, between 0 and 239 is addressable, PS will contain target address or broadcast.
- * Would use J1939_PGN_PDU1_MAX on incomming message before comparing to check if is J1939_PGN_REQUEST
+ * Would use J1939_PGN_PDU1_MAX on incoming message before comparing to check if is J1939_PGN_REQUEST
  * Then check what the PS value is by inversing ~J1939_PGN_PDU1_MAX
  */
 constexpr std::uint32_t J1939_PGN_REQUEST{ 0x0EA00U };
 
 /*
  * Address Claimed PGN, between 0 and 239 so its addressable, PS will contain target address or broadcast
- * Would use J1939_PGN_PDU1_MAX on incomming message before comparing to check if is J1939_PGN_ADDRESS_CLAIMED
+ * Would use J1939_PGN_PDU1_MAX on incoming message before comparing to check if is J1939_PGN_ADDRESS_CLAIMED
  * Then check what the PS value is by inversing ~J1939_PGN_PDU1_MAX
  */
 constexpr std::uint32_t J1939_PGN_ADDRESS_CLAIMED{ 0x0EE00U };

@@ -26,9 +26,9 @@
 
 
 ///
-/// TODO: Is this class realy needed. Could just use a linux can_frame instead?
-/// TODO: Only realy need to read from the header data.
-/// TODO: This class might genereate confusion regarding payload size?
+/// TODO: Is this class really needed. Could just use a linux can_frame instead?
+/// TODO: Only really need to read from the header data.
+/// TODO: This class might generate confusion regarding payload size?
 ///
 
 namespace jay {
@@ -53,7 +53,7 @@ struct frame
    */
   frame(const frame_header &in_header, const payload &in_payload) : header(in_header), payload(in_payload)
   {
-    // Cant use this as size will allways be 8 and that will not match
+    // Cant use this as size will always be 8 and that will not match
     // All usecases
     // header.SetPayloadLength(in_payload.size());
   }
@@ -108,7 +108,7 @@ struct frame
       name };
   }
 
-  /// TODO: Look into cmmanded address command
+  /// TODO: Look into commanded address command
 
   /// TODO: Create statics for other known frame types
 
@@ -126,7 +126,7 @@ struct frame
     std::stringstream ss{};
     ss << std::hex << header.id() << ":";
     for (auto byte : payload) {
-      /// Use + as uint8 is alias for char, the ouput is writen as sybols instead of number
+      /// Use + as uint8 is alias for char, the ouput is written as symbols instead of number
       ss << std::hex << static_cast<std::uint32_t>(byte) << "'";
     }
     return ss.str();

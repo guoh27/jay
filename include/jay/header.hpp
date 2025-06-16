@@ -31,7 +31,7 @@ namespace jay {
  * Class is a wrapper around canary frame_header class
  * Remember order is [31] ... [0] this is not an array where 0 is the first index
  * First three bits are EFF/RTR/ERR flags then followed by 29-bit message
- * Frame format flag (EFF)          = [31] 1-bit, 0 = stardard 11-bit, 1 = extended 29-bit, always 1 in j1939
+ * Frame format flag (EFF)          = [31] 1-bit, 0 = standard 11-bit, 1 = extended 29-bit, always 1 in j1939
  * Remote transmition request (RTR) = [30] 1-bit, 1 indicates rtr frame with no data, always 0 in j1939
  * Error frame (ERR)                = [29] 1-bit, indicates if the frame is an error frame or not, always 0 in j1939
  *
@@ -39,7 +39,7 @@ namespace jay {
  * Priority (Prio)      = [28] ... [26] 3 bit, indicating priority of j1939 frame
  * Reserved Bit (R)     = [25]          1 bit, Reserved bit for future use
  * Data Page (DP)       = [24]          1 bit, data page bit used to extend PDU numbers
- * PDU format (PF)      = [23] ... [16] 8 -bit, if between 0-239 then frame is p2p and PS is destination adress,
+ * PDU format (PF)      = [23] ... [16] 8 -bit, if between 0-239 then frame is p2p and PS is destination address,
  *                                              if between 240-255 then frame is broadcast and PS is group extension
  * PDU specific (PS)    = [15] ... [8]  8 -bit, is destination address or group extention
  * Source Address (SA)  = [7]  ... [0]  8 -bit, address of sending device
@@ -164,7 +164,7 @@ public:
   /**
    * @brief Set the pdu format (PF)
    * @param pdu_format (PF), if the pdu format is 0 - 239 then the frame
-   * is peer-to-peer communication and the PS is the destination adress.
+   * is peer-to-peer communication and the PS is the destination address.
    * If PF is 240-255 then the frame is broadcasted and PS is a PSU group extension.
    * @note SAE and Proprietary usage:
    * 0x00 − 0xEE: Peer-to-Peer messages defined by SAE
@@ -193,14 +193,14 @@ public:
    * @brief Set the source address of the can frame.
    * @param source_address of the frame
    */
-  frame_header &source_adderess(const std::uint8_t source_address)
+  frame_header &source_address(const std::uint8_t source_address)
   {
     id((id() & ~ad_mask) | static_cast<std::uint32_t>(source_address));
     return *this;
   }
 
   /**
-   * @brief Set length of the data that is assiociated with the header
+   * @brief Set length of the data that is associated with the header
    * @param source_address of the frame
    */
   frame_header &payload_length(const std::size_t length)
@@ -234,7 +234,7 @@ public:
   /**
    * @brief Get the 18-bit parameter group number (PGN) of the header
    * the PGN consists of reserved bit, data page, pdu format(pf) and pdu specific (ps)
-   * @return 18 - bit, paramter group number
+   * @return 18 - bit, paramater group number
    * @note if the pdu format is global then pdu specific is returned with pgn if not then
    * pdu specific bytes are set to 0x00.
    */
@@ -267,15 +267,15 @@ public:
 
   /**
    * @brief Get the source address of the frame
-   * @return 8 bit soruce address
+   * @return 8 bit source address
    */
-  std::uint8_t source_adderess() const noexcept
+  std::uint8_t source_address() const noexcept
   {
     return static_cast<std::uint8_t>(header_.id());// Return bits 7 - 0, first byte
   }
 
   /**
-   * @brief Get length of the data that is assiociated with the header
+   * @brief Get length of the data that is associated with the header
    * @param source_address of the frame
    */
   std::size_t payload_length() const noexcept { return header_.payload_length(); }
@@ -288,7 +288,7 @@ public:
 
   /**
    * @brief Check if PDU format is broadcast or peer-to-peer
-   * @note This function does not take into cosideration the data page bit
+   * @note This function does not take into consideration the data page bit
    * @return true if broadcast,
    * @return false if peer-to-peer
    */

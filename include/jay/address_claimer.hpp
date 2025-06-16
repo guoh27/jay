@@ -29,7 +29,7 @@ namespace jay {
 /**
  * @brief boost::sml state machine class for dynamic j1939 address claiming
  * @note Each state machine is responsible for only one name address pair
- * @note The state machine does not (cant?) manage delays / timeouts internaly
+ * @note The state machine does not (cant?) manage delays / timeouts internally
  */
 class address_claimer
 {
@@ -53,7 +53,7 @@ public:
    * @brief Constructor
    * @param name to get an address for
    */
-  address_claimer(name name) : name_(name), callbacks_() {}
+  explicit address_claimer(name name) : name_(name), callbacks_() {}
 
   /**
    * @brief Constructor
@@ -121,7 +121,7 @@ public:
   };
 
   /**
-   * @brief Event used when recieving an address claim from another controller/device
+   * @brief Event used when receiving an address claim from another controller/device
    */
   struct ev_address_claim
   {
@@ -151,20 +151,20 @@ private:
   ///
 
   /**
-   * @brief Checks if no addresses are awailable to claim
+   * @brief Checks if no addresses are available to claim
    * @param network to check for available addresses
    */
   bool no_address_available(const network &network) const { return network.full(); }
 
   /**
-   * @brief Checks if addresses are awailable to claim
+   * @brief Checks if addresses are available to claim
    * @param network to check for available addresses
    */
   bool address_available(const network &network) const { return !network.full(); }
 
   /**
    * @brief Check if our name has priority
-   * @param name to check local name agains
+   * @param name to check local name against
    * @return false if local name is larger
    * @return true if local name is less
    */
@@ -180,9 +180,9 @@ private:
   bool address_conflict(std::uint8_t l_address, std::uint8_t r_address) const { return l_address == r_address; }
 
   /**
-   * @brief Checks if addresses change is requred
-   * @param name to check local name agains
-   * @param l_address address assiosiated with name
+   * @brief Checks if addresses change is required
+   * @param name to check local name again
+   * @param l_address address associated with name
    * @param r_address local address
    * @return false if addresses does not conflict or if local name has priority
    * @return true if addresses conflict and local name does not have priority
@@ -195,7 +195,7 @@ private:
   /// State specific guards
 
   /**
-   * @brief Check if claiming state has proirity over address claim
+   * @brief Check if claiming state has priority over address claim
    * @param claiming state
    * @param address_claim event
    * @return false if addresses dont conflict or local name does not have priority
@@ -207,8 +207,8 @@ private:
   }
 
   /**
-   * @brief Check if claiming state has proirity over address claim event and that
-   * new addresses are avaialble
+   * @brief Check if claiming state has priority over address claim event and that
+   * new addresses are available
    * @param claiming state
    * @param address_claim event
    * @param network of name address pairs
@@ -222,7 +222,7 @@ private:
   }
 
   /**
-   * @brief Check if claiming state loses proirity over address claim event and
+   * @brief Check if claiming state loses priority over address claim event and
    * if there are no available addresses
    * @param claiming state
    * @param address_claim event
@@ -237,7 +237,7 @@ private:
   }
 
   /**
-   * @brief Check if claimed state has proirity over address claim event
+   * @brief Check if claimed state has priority over address claim event
    * @param has_address state
    * @param address_claim event
    * @return false if addresses dont conflict or local name does not have priority
@@ -249,8 +249,8 @@ private:
   }
 
   /**
-   * @brief Check if claimed state has proirity over address claim event and that
-   * new addresses are avaialble
+   * @brief Check if claimed state has priority over address claim event and that
+   * new addresses are available
    * @param has_address state
    * @param address_claim event
    * @param network
@@ -264,7 +264,7 @@ private:
   }
 
   /**
-   * @brief Check if claimed state loses proirity over address claim event and
+   * @brief Check if claimed state loses priority over address claim event and
    * if there are no available addresses
    * @param has_address state
    * @param address_claim event
@@ -312,7 +312,7 @@ private:
   //@                             Actions                            @//
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
 
-  /// Data transfere actions
+  /// Data transfree actions
 
   /**
    * @brief Set preferred address when entering claiming state
@@ -415,7 +415,7 @@ private:
 
 public:
   /**
-   * Creates trasition table
+   * Creates transition table
    */
   auto operator()() const
   {

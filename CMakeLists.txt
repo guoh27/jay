@@ -45,10 +45,20 @@ option(BUILD_DOCS "Build jay documentation." OFF)
 # Dont need to look for SML as its a single header file
 
 #Fing Canary
-find_package(canary REQUIRED)
+if(NOT TARGET canary::canary)
+  find_package(canary QUIET)
+  if(NOT canary_FOUND)
+    message(STATUS "Canary not found, trying to find it in the system")
+    pkg_check_modules(canary REQUIRED IMPORTED_TARGET canary)
+  endif()
+endif()
+
+if(NOT TARGET canary::canary)
+  message(FATAL_ERROR "Canary not found, please install it or build it from source")
+endif()
 
 #Find Boost
-find_package(Boost COMPONENTS system REQUIRED) # header only libraries must not be added here
+find_package(Boost COMPONENTS system REQUIRED CONFIG) # header only libraries must not be added here
 
 #Find threads
 find_package(Threads)
@@ -72,6 +82,14 @@ target_link_libraries(
       canary::canary
       Threads::Threads
 )
+
+if(TARGET sml::sml)
+    target_link_libraries(
+        ${APPLICATION_NAME}
+        INTERFACE
+        sml::sml
+)
+endif()
 
 target_compile_features(${APPLICATION_NAME} INTERFACE cxx_std_17)
 

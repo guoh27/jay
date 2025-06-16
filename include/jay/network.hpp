@@ -39,9 +39,9 @@ public:
   /**
    * @brief Construct a new network object
    *
-   * @param interface_name that the network is assosiated with
+   * @param interface_name that the network is associated with
    */
-  network(std::string interface_name) : interface_name_(interface_name) {}
+  explicit network(std::string interface_name) : interface_name_(interface_name) {}
 
   /// TODO: Should be able to implement a copy, but deleted in the meantime
   network(const network &) = delete;
@@ -73,7 +73,7 @@ public:
    * be claimed.
    * @param name
    * @param address of the controller app, if J1939_NO_ADDR then
-   * controller name registeded, but if already exist then address is cleared
+   * controller name registered, but if already exist then address is cleared
    * @return true if name was inserted
    * @return true if existing name address was changed
    * @return false if no name was inserted
@@ -157,7 +157,7 @@ public:
    * @param address to check
    * @return true if no controller has the address,
    * @return false if a controller has the address
-   * @ruetrn false if address provided was a global address
+   * @return false if address provided was a global address
    */
   bool available(std::uint8_t address) const
   {
@@ -271,25 +271,25 @@ public:
 
   /**
    * Search the network empty addresses
-   * @param name of the controller appliction looking for address
-   * @param preffed_address to start search from, clameped to between 0 - 253
+   * @param name of the controller application looking for address
+   * @param preferred_address to start search from, clamped to between 0 - 253
    * @param force the taking of an address from another ecu
    * @return empty address, if no addresses were available J1939_NO_ADDR is returned
    */
-  std::uint8_t find_address(jay::name name, std::uint8_t preffed_address = 0, bool force = false) const
+  std::uint8_t find_address(jay::name name, std::uint8_t preferred_address = 0, bool force = false) const
   {
-    preffed_address = std::clamp(preffed_address, static_cast<std::uint8_t>(0), J1939_MAX_UNICAST_ADDR);
+    preferred_address = std::clamp(preferred_address, static_cast<std::uint8_t>(0), J1939_MAX_UNICAST_ADDR);
     std::shared_lock lock{ network_mtx_ };
-    auto address = search(name, preffed_address, J1939_IDLE_ADDR, force);
-    if (address == J1939_NO_ADDR) { address = search(name, 0, preffed_address, force); }
+    auto address = search(name, preferred_address, J1939_IDLE_ADDR, force);
+    if (address == J1939_NO_ADDR) { address = search(name, 0, preferred_address, force); }
     return address;
-    // if no address was found above the preffered address, check bellow
+    // if no address was found above the preferred address, check bellow
   }
 
   /// TODO: Check the name of other devices and see if they can change their address
 
   /**
-   * @brief Get the name of the interface that this network is assosiated with
+   * @brief Get the name of the interface that this network is associated with
    * @return const std::string&
    */
   const std::string &get_interface_name() const { return interface_name_; }
@@ -297,8 +297,8 @@ public:
 private:
   /**
    * Search the network empty addresses
-   * @param name of the controller appliction looking for address
-   * @param preffed_address to start search from
+   * @param name of the controller application looking for address
+   * @param preferred_address to start search from
    * @param limit of the address search
    * @param force the taking of an address from another ecu
    * @return empty address, if no addresses were available J1939_NO_ADDR is returned
@@ -318,7 +318,7 @@ private:
 
   /// NOTE: Could implement maps as a bidirectional map,
   /// but would need somewhere for names with null address
-  /// so overal it migth not be worth it
+  /// so overall it might not be worth it
 
   std::unordered_map<jay::name, std::uint8_t, jay::name::hash> name_addr_map_{};
   std::unordered_map<std::uint8_t, jay::name> addr_name_map_{};

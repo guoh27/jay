@@ -25,7 +25,7 @@ TEST(Jay_Name_Test, Jay_Name_Create_Tests)
   ASSERT_EQ(name.function_instance(), 0x1AU);
   ASSERT_EQ(name.function(), 0xDCU);
   ASSERT_EQ(name.device_class(), 0x12U);
-  ASSERT_EQ(name.device_class_instace(), 0x4U);
+  ASSERT_EQ(name.device_class_instance(), 0x4U);
   ASSERT_EQ(name.industry_group(), 0x2U);
   ASSERT_EQ(name.self_config_address(), 0x0U);
 
@@ -37,7 +37,7 @@ TEST(Jay_Name_Test, Jay_Name_Create_Tests)
     .function_instance(0x1AU)
     .function(0xDCU)
     .device_class(0x12U)
-    .device_class_instace(0x4U)
+    .device_class_instance(0x4U)
     .industry_group(0x2U)
     .self_config_address(0x0U);
 
@@ -47,7 +47,7 @@ TEST(Jay_Name_Test, Jay_Name_Create_Tests)
   ASSERT_EQ(name2.function_instance(), 0x1AU);
   ASSERT_EQ(name2.function(), 0xDCU);
   ASSERT_EQ(name2.device_class(), 0x12U);
-  ASSERT_EQ(name2.device_class_instace(), 0x4U);
+  ASSERT_EQ(name2.device_class_instance(), 0x4U);
   ASSERT_EQ(name2.industry_group(), 0x2U);
   ASSERT_EQ(name2.self_config_address(), 0x0U);
 
@@ -60,7 +60,7 @@ TEST(Jay_Name_Test, Jay_Name_Create_Tests)
   ASSERT_EQ(name.function_instance(), 0x10U);
   ASSERT_EQ(name.function(), 0x80U);
   ASSERT_EQ(name.device_class(), 0x40U);
-  ASSERT_EQ(name.device_class_instace(), 0x8U);
+  ASSERT_EQ(name.device_class_instance(), 0x8U);
   ASSERT_EQ(name.industry_group(), 0x4U);
   ASSERT_EQ(name.self_config_address(), 0x1U);
 }
