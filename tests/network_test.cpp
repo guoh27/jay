@@ -4,12 +4,12 @@
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
-// Official repository: https://github.com/bjorn-jaes/jay
+// Official repository: https://github.com/guoh27/jay
 //
 
 #include <gtest/gtest.h>
 
-#include "../include/jay/network.hpp"
+#include "jay/network.hpp"
 
 TEST(Jay_Network_Test, Jay_Network_Insert_Test)
 {
@@ -44,7 +44,7 @@ TEST(Jay_Network_Test, Jay_Network_Insert_Test)
   j1939_network.release(controller_1);
   ASSERT_TRUE(j1939_network.in_network(controller_1));
   ASSERT_TRUE(j1939_network.available(address_1));
-  ASSERT_EQ(j1939_network.get_address(controller_1), J1939_IDLE_ADDR);
+  ASSERT_EQ(j1939_network.get_address(controller_1), jay::J1939_IDLE_ADDR);
   ASSERT_FALSE(j1939_network.get_name(address_1));
   ASSERT_EQ(j1939_network.address_count(), 1);
   ASSERT_EQ(j1939_network.name_count(), 2);
@@ -52,7 +52,7 @@ TEST(Jay_Network_Test, Jay_Network_Insert_Test)
   j1939_network.remove(controller_2);
   ASSERT_FALSE(j1939_network.in_network(controller_2));
   ASSERT_TRUE(j1939_network.available(address_2));
-  ASSERT_EQ(j1939_network.get_address(controller_2), J1939_NO_ADDR);
+  ASSERT_EQ(j1939_network.get_address(controller_2), jay::J1939_NO_ADDR);
   ASSERT_FALSE(j1939_network.get_name(address_2));
   ASSERT_EQ(j1939_network.address_count(), 0);
   ASSERT_EQ(j1939_network.name_count(), 1);
@@ -65,7 +65,7 @@ TEST(Jay_Network_Test, Jay_Network_Insert_Test)
 
   // Controller 2 is larger therfor cannot claim
   ASSERT_TRUE(j1939_network.insert(controller_2, address_1));
-  ASSERT_EQ(j1939_network.get_address(controller_2), J1939_IDLE_ADDR);
+  ASSERT_EQ(j1939_network.get_address(controller_2), jay::J1939_IDLE_ADDR);
   ASSERT_EQ(j1939_network.address_count(), 1);
   ASSERT_EQ(j1939_network.name_count(), 2);
 
@@ -80,18 +80,18 @@ TEST(Jay_Network_Test, Jay_Network_Insert_Test)
   // Controller 3 is smaller an can take address
   ASSERT_TRUE(j1939_network.insert(controller_3, address_2));
   ASSERT_EQ(j1939_network.get_address(controller_3), address_2);
-  ASSERT_EQ(j1939_network.get_address(controller_2), J1939_IDLE_ADDR);
+  ASSERT_EQ(j1939_network.get_address(controller_2), jay::J1939_IDLE_ADDR);
   ASSERT_EQ(j1939_network.address_count(), 2);
   ASSERT_EQ(j1939_network.name_count(), 3);
 
   // Inserting address null
-  ASSERT_TRUE(j1939_network.insert(controller_4, J1939_IDLE_ADDR));
-  ASSERT_EQ(j1939_network.get_address(controller_4), J1939_IDLE_ADDR);
+  ASSERT_TRUE(j1939_network.insert(controller_4, jay::J1939_IDLE_ADDR));
+  ASSERT_EQ(j1939_network.get_address(controller_4), jay::J1939_IDLE_ADDR);
   ASSERT_EQ(j1939_network.address_count(), 2);
   ASSERT_EQ(j1939_network.name_count(), 4);
 
   // Inserting existing with global address should not change anything
-  ASSERT_FALSE(j1939_network.insert(controller_3, J1939_NO_ADDR));
+  ASSERT_FALSE(j1939_network.insert(controller_3, jay::J1939_NO_ADDR));
   ASSERT_EQ(j1939_network.get_address(controller_3), address_2);
   ASSERT_EQ(j1939_network.address_count(), 2);
   ASSERT_EQ(j1939_network.name_count(), 4);
@@ -102,10 +102,10 @@ TEST(Jay_Network_Test, Jay_Network_Fill_Test)
   jay::network j1939_network{ "vcan0" };
   ASSERT_FALSE(j1939_network.full());
 
-  for (uint8_t i = 0; i < J1939_NO_ADDR; i++) { ASSERT_TRUE(j1939_network.insert(i, i)); }
+  for (uint8_t i = 0; i < jay::J1939_NO_ADDR; i++) { ASSERT_TRUE(j1939_network.insert(i, i)); }
 
-  ASSERT_EQ(j1939_network.address_count(), J1939_MAX_UNICAST_ADDR + 1);
-  ASSERT_EQ(j1939_network.name_count(), J1939_NO_ADDR);
+  ASSERT_EQ(j1939_network.address_count(), jay::J1939_MAX_UNICAST_ADDR + 1);
+  ASSERT_EQ(j1939_network.name_count(), jay::J1939_NO_ADDR);
   ASSERT_TRUE(j1939_network.full());
 }
 
@@ -118,13 +118,13 @@ TEST(Jay_Network_Test, Jay_Network_Search_Test)
   uint8_t address = 100;
 
   uint64_t ctrl{ 100 };
-  for (uint8_t i = 0; i < J1939_IDLE_ADDR; i++) {// Fill network
+  for (uint8_t i = 0; i < jay::J1939_IDLE_ADDR; i++) {// Fill network
     ASSERT_TRUE(j1939_network.insert(ctrl, i));
     ctrl++;
   }
 
   // No address available
-  ASSERT_EQ(j1939_network.find_address(0), J1939_NO_ADDR);
+  ASSERT_EQ(j1939_network.find_address(0), jay::J1939_NO_ADDR);
 
   // Check if name 200 has address 100
   ASSERT_EQ(j1939_network.get_address(controller), address);

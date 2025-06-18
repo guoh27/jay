@@ -4,12 +4,12 @@
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
-// Official repository: https://github.com/bjorn-jaes/jay
+// Official repository: https://github.com/guoh27/jay
 //
 
 #include <gtest/gtest.h>
 
-#include "../include/jay/frame.hpp"
+#include "jay/frame.hpp"
 
 // Lib
 #include "canary/raw.hpp"
@@ -39,9 +39,9 @@ TEST(Jay_Frame_Test, Jay_Frame_Create_Test)
   ASSERT_EQ(addr_req.header.priority(), 6);
   ASSERT_EQ(addr_req.header.data_page(), false);
   ASSERT_EQ(addr_req.header.pdu_format(), jay::PF_REQUEST);
-  ASSERT_EQ(addr_req.header.pdu_specific(), J1939_NO_ADDR);
-  ASSERT_EQ(addr_req.header.pgn(), J1939_PGN_REQUEST);
-  ASSERT_EQ(addr_req.header.source_adderess(), J1939_IDLE_ADDR);
+  ASSERT_EQ(addr_req.header.pdu_specific(), jay::J1939_NO_ADDR);
+  ASSERT_EQ(addr_req.header.pgn(), jay::J1939_PGN_REQUEST);
+  ASSERT_EQ(addr_req.header.source_address(), jay::J1939_IDLE_ADDR);
   ASSERT_EQ(addr_req.header.payload_length(), 3);
   ASSERT_EQ(addr_req.payload[0], 0x00);
   ASSERT_EQ(addr_req.payload[1], 0xEE);
@@ -56,9 +56,9 @@ TEST(Jay_Frame_Test, Jay_Frame_Create_Test)
   ASSERT_EQ(cant_claim.header.priority(), 6);
   ASSERT_EQ(cant_claim.header.data_page(), false);
   ASSERT_EQ(cant_claim.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
-  ASSERT_EQ(cant_claim.header.pdu_specific(), J1939_NO_ADDR);
-  ASSERT_EQ(cant_claim.header.pgn(), J1939_PGN_ADDRESS_CLAIMED);
-  ASSERT_EQ(cant_claim.header.source_adderess(), J1939_IDLE_ADDR);
+  ASSERT_EQ(cant_claim.header.pdu_specific(), jay::J1939_NO_ADDR);
+  ASSERT_EQ(cant_claim.header.pgn(), jay::J1939_PGN_ADDRESS_CLAIMED);
+  ASSERT_EQ(cant_claim.header.source_address(), jay::J1939_IDLE_ADDR);
   ASSERT_EQ(cant_claim.header.payload_length(), 8);
 
   auto claim = jay::frame::make_address_claim(jay::name{ 00 }, 0xAA);
@@ -68,9 +68,9 @@ TEST(Jay_Frame_Test, Jay_Frame_Create_Test)
   ASSERT_EQ(claim.header.priority(), 6);
   ASSERT_EQ(claim.header.data_page(), false);
   ASSERT_EQ(claim.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
-  ASSERT_EQ(claim.header.pdu_specific(), J1939_NO_ADDR);
-  ASSERT_EQ(claim.header.pgn(), J1939_PGN_ADDRESS_CLAIMED);
-  ASSERT_EQ(claim.header.source_adderess(), 0xAA);
+  ASSERT_EQ(claim.header.pdu_specific(), jay::J1939_NO_ADDR);
+  ASSERT_EQ(claim.header.pgn(), jay::J1939_PGN_ADDRESS_CLAIMED);
+  ASSERT_EQ(claim.header.source_address(), 0xAA);
   ASSERT_EQ(claim.header.payload_length(), 8);
 }
 

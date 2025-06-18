@@ -1,14 +1,11 @@
 //
-// Copyright (c) 2022 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
+// Copyright (c) 2022 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no), 2025 Hong.guo (hong.guo@advantech.com.cn)
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
-// Official repository: https://github.com/bjorn-jaes/jay
+// Official repository: https://github.com/guoh27/jay
 //
-
-#ifndef JAY_J1939_HEADER_H
-#define JAY_J1939_HEADER_H
 
 #pragma once
 
@@ -19,7 +16,7 @@
 #include "canary/frame_header.hpp"
 
 // Local
-#include "j1939.hpp"//std::uint8_t ... , pgn_t and priority_t
+#include "j1939_type.hpp"//std::uint8_t ... , pgn_t and priority_t
 
 namespace jay {
 
@@ -67,7 +64,7 @@ public:
    */
   frame_header() : header_()
   {
-    // Allways the case with j1939 headers
+    // Always the case with j1939 headers
     // Make sure that any other constructors invoke this constructor
     header_.extended_format(true);
     header_.error(false);
@@ -117,7 +114,7 @@ public:
    * @brief Construct a j1939 frame header from complete header data
    * @param header_data containing the 29 bits that j1939 structures use
    */
-  frame_header(const std::uint32_t header_data, const std::uint8_t payload = 0) : frame_header()
+  explicit frame_header(const std::uint32_t header_data, const std::uint8_t payload = 0) : frame_header()
   {
     header_.id(header_data);
     header_.payload_length(payload);
@@ -146,6 +143,23 @@ public:
   frame_header &priority(const priority_t priority)
   {
     id((id() & ~prio_mask) | (std::clamp(static_cast<std::uint32_t>(priority), 0U, 7U) << 26));
+    return *this;
+  }
+
+  /**
+   * @brief Set the PGN of the J1939 frame.
+   * @param pgn (Parameter Group Number) to set, this will clear the previous PGN
+   * bits and set the new one.
+   * @return reference to this frame_header object
+   * @note This function will clear the previous PGN bits (R + DP + PF + PS, corresponding to 0x03FF FF00)
+   * and set the new PGN by shifting it left by 8 bits.
+   */
+  frame_header &pgn(const pgn_t pgn)
+  {
+    // Clear the previous PGN bits and set the new one
+    // pgn_mask = 0x03FF FF00, so we clear bits 25 - 8
+    // We shift the pgn left by 8 bits to place it in the correct position
+    id((id() & ~pgn_mask) | ((static_cast<std::uint32_t>(pgn) & 0x3FFFF) << 8));
     return *this;
   }
 
@@ -226,12 +240,6 @@ public:
   priority_t priority() const noexcept { return static_cast<priority_t>((header_.id() & prio_mask) >> 26); }
 
   /**
-   * @brief Get the data page bit
-   * @return data page bit, 0 if not set, 1 if set
-   */
-  std::uint8_t data_page() const noexcept { return static_cast<std::uint8_t>((header_.id() & data_page_mask) >> 24); }
-
-  /**
    * @brief Get the 18-bit parameter group number (PGN) of the header
    * the PGN consists of reserved bit, data page, pdu format(pf) and pdu specific (ps)
    * @return 18 - bit, paramater group number
@@ -244,6 +252,12 @@ public:
     if (!is_broadcast()) { pgn &= ~ps_mask; }
     return pgn >> 8;
   }
+
+  /**
+   * @brief Get the data page bit
+   * @return data page bit, 0 if not set, 1 if set
+   */
+  std::uint8_t data_page() const noexcept { return static_cast<std::uint8_t>((header_.id() & data_page_mask) >> 24); }
 
   /**
    * @brief Get the PDU Format data of the J1939 frame.
@@ -322,6 +336,3 @@ private:
 static_assert(sizeof(jay::frame_header) == sizeof(std::uint64_t), "Size of frame header must be exactly 8 bytes");
 
 }// namespace jay
-
-
-#endif

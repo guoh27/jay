@@ -4,12 +4,12 @@
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
-// Official repository: https://github.com/bjorn-jaes/jay
+// Official repository: https://github.com/guoh27/jay
 //
 
 #include <gtest/gtest.h>
 
-#include "../include/jay/address_claimer.hpp"
+#include "jay/address_claimer.hpp"
 
 // C++
 #include <queue>
@@ -142,7 +142,7 @@ TEST_F(StateMachineTest, Jay_State_Machine_NoAddress_Test)
   state_machine.set_current_states(boost::sml::state<jay::address_claimer::st_no_address>);
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_no_address>));
 
-  for (uint8_t i = 200; i < J1939_NO_ADDR; i++) {/// Fill network
+  for (uint8_t i = 200; i < jay::J1939_NO_ADDR; i++) {/// Fill network
     j1939_network.insert(i, i);
   }
 
@@ -238,14 +238,14 @@ TEST_F(StateMachineTest, Jay_State_Machine_Claiming_Test)
   claim_queue.pop();
 
   // Fill remainging addresses, untill none are available
-  for (uint8_t i = 0xB6U; i < J1939_IDLE_ADDR; i++) {/// Fill network
+  for (uint8_t i = 0xB6U; i < jay::J1939_IDLE_ADDR; i++) {/// Fill network
     j1939_network.insert(i, i);
     state_machine.process_event(jay::address_claimer::ev_address_claim{ i, i });
   }
 
-  ASSERT_EQ(claim_queue.size(), J1939_IDLE_ADDR - 0xB6U - 1);
+  ASSERT_EQ(claim_queue.size(), jay::J1939_IDLE_ADDR - 0xB6U - 1);
 
-  for (uint8_t i = 0xB6U; i < J1939_IDLE_ADDR - 1; i++) {// Claiming until max address reached
+  for (uint8_t i = 0xB6U; i < jay::J1939_IDLE_ADDR - 1; i++) {// Claiming until max address reached
     claim_pair = claim_queue.front();
     ASSERT_EQ(claim_pair.first, local_name);
     ASSERT_EQ(claim_pair.second, i + 1);// next address
@@ -323,7 +323,7 @@ TEST_F(StateMachineTest, Jay_State_Machine_HasAddress_Test)
   claim_queue.pop();
 
   // Fill remainging addresses
-  for (uint8_t i = 0; i < J1939_NO_ADDR; i++) {/// Fill network
+  for (uint8_t i = 0; i < jay::J1939_NO_ADDR; i++) {/// Fill network
     j1939_network.insert(i, i);
   }
 

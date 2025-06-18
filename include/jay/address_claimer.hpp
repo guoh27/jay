@@ -1,15 +1,11 @@
 //
-// Copyright (c) 2022 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
+// Copyright (c) 2022 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no), 2025 Hong.guo (hong.guo@advantech.com.cn)
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
-// Official repository: https://github.com/bjorn-jaes/jay
+// Official repository: https://github.com/guoh27/jay
 //
-
-#ifndef JAY_STATE_MACHINE_H
-#define JAY_STATE_MACHINE_H
-
 #pragma once
 
 // C++
@@ -472,5 +468,3 @@ private:
 };
 
 }// namespace jay
-
-#endif

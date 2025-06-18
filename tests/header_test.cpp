@@ -4,12 +4,12 @@
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
-// Official repository: https://github.com/bjorn-jaes/jay
+// Official repository: https://github.com/guoh27/jay
 //
 
 #include <gtest/gtest.h>
 
-#include "../include/jay/header.hpp"
+#include "jay/header.hpp"
 
 TEST(Jay_Header_Test, Jay_Header_Getters_Tests)
 {
@@ -26,7 +26,7 @@ TEST(Jay_Header_Test, Jay_Header_Getters_Tests)
   ASSERT_EQ(header.pdu_format(), 0xAF);
   ASSERT_EQ(header.pdu_specific(), 0xFF);
   ASSERT_EQ(header.pgn(), 0x00'01'AF'00);
-  ASSERT_EQ(header.source_adderess(), 0x02);
+  ASSERT_EQ(header.source_address(), 0x02);
   ASSERT_EQ(header.payload_length(), 1);
 
   jay::frame_header header1{ 10, 0x0FAF0, 0x64, 5 };
@@ -38,7 +38,7 @@ TEST(Jay_Header_Test, Jay_Header_Getters_Tests)
   ASSERT_EQ(header1.pdu_format(), 0xFA);
   ASSERT_EQ(header1.pdu_specific(), 0xF0);
   ASSERT_EQ(header1.pgn(), 0x00'00'FA'F0);
-  ASSERT_EQ(header1.source_adderess(), 0x64);
+  ASSERT_EQ(header1.source_address(), 0x64);
   ASSERT_EQ(header1.payload_length(), 5);
 
   jay::frame_header header2{ 0xFD'FF'FF'FF };
@@ -50,7 +50,7 @@ TEST(Jay_Header_Test, Jay_Header_Getters_Tests)
   ASSERT_EQ(header2.pdu_format(), 0xFF);
   ASSERT_EQ(header2.pdu_specific(), 0xFF);
   ASSERT_EQ(header2.pgn(), 0x00'01'FF'FF);
-  ASSERT_EQ(header2.source_adderess(), 0xFF);
+  ASSERT_EQ(header2.source_address(), 0xFF);
   ASSERT_EQ(header2.payload_length(), 0);
 }
 
@@ -68,8 +68,8 @@ TEST(Jay_Header_Test, Jay_Header_Setters_Tests)
   ASSERT_EQ(0x23, header.pdu_format());
   header.pdu_specific(0x28);
   ASSERT_EQ(0x28, header.pdu_specific());
-  header.source_adderess(0xFF);
-  ASSERT_EQ(0xFF, header.source_adderess());
+  header.source_address(0xFF);
+  ASSERT_EQ(0xFF, header.source_address());
   header.payload_length(8);
   ASSERT_EQ(8, header.payload_length());
 }
@@ -82,11 +82,11 @@ TEST(Jay_Header_Test, Jay_Header_Other_Tests)
   uint32_t source_address{ 100 };
   uint32_t destination_address{ 0x97 };
 
-  header.source_adderess(source_address);
+  header.source_address(source_address);
   header.pdu_specific(destination_address);
 
   ASSERT_EQ(0x0C'bb'97'64, header.id());
   ASSERT_EQ(0xBB, header.pdu_format());
   ASSERT_EQ(destination_address, header.pdu_specific());
-  ASSERT_EQ(source_address, header.source_adderess());
+  ASSERT_EQ(source_address, header.source_address());
 }

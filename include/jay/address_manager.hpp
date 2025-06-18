@@ -1,19 +1,16 @@
 //
-// Copyright (c) 2022 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
+// Copyright (c) 2022 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no), 2025 Hong.guo (hong.guo@advantech.com.cn)
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
-// Official repository: https://github.com/bjorn-jaes/jay
+// Official repository: https://github.com/guoh27/jay
 //
-
-#ifndef JAY_ADDRESS_MANAGER_H
-#define JAY_ADDRESS_MANAGER_H
-
 #pragma once
 
 // C++
 #include <cstdlib>//rand
+#include <random>//std::mt19937, std::uniform_int_distribution
 #include <string>//std::string
 
 // Lib
@@ -23,6 +20,7 @@
 
 // Local
 #include "address_claimer.hpp"
+#include "j1939_type.hpp"
 
 namespace jay {
 
@@ -34,33 +32,15 @@ class address_manager
 {
 public:
   /**
-   * @brief Callbacks used by the address manager
-   */
-  struct callbacks
-  {
-    // Called when a local controller has claimed an address
-    std::function<void(jay::name, std::uint8_t)> on_address;
-
-    // Called when a local controller loses their claimed an address
-    std::function<void(jay::name)> on_lose_address;
-
-    // Called when a claim frame or cannot claim frame needs to be sent
-    std::function<void(jay::frame)> on_frame;
-
-    // Called when an internal error occurs, used for debugging
-    std::function<void(std::string, const boost::system::error_code &)> on_error;
-  };
-
-  /**
    * @brief Constructor
    * @param context from boost asio
    * @param context name to claim address for
    * @param network containing name address pairs
    * @note remember to add callbacks for getting data out of object
    */
-  address_manager(boost::asio::io_context &context, jay::name name, jay::network &network)
+  address_manager(boost::asio::io_context &context, jay::name name, std::shared_ptr<jay::network> network)
     : context_(context), network_(network), addr_claimer_(name), claim_state_(), has_address_state_(),
-      state_machine_(addr_claimer_, network, claim_state_, has_address_state_), timeout_timer_(context)
+      state_machine_(addr_claimer_, *network, claim_state_, has_address_state_), timeout_timer_(context)
   {
     addr_claimer_.set_callbacks(
       jay::address_claimer::callbacks{ [this](auto name, auto address) -> void { on_address(name, address); },
@@ -71,30 +51,35 @@ public:
   }
 
   /**
-   * @brief Constructor with callbacks
-   * @param context from boost asio
-   * @param context name to claim address for
-   * @param network containing name address pairs
-   * @param callbacks for getting data out of object
+   * @brief Set the callbacks for address manager
+   * @param callbacks to set
    */
-  address_manager(boost::asio::io_context &context, jay::name name, jay::network &network, callbacks &&callbacks)
-    : context_(context), network_(network), addr_claimer_(name), claim_state_(), has_address_state_(),
-      state_machine_(addr_claimer_, network, claim_state_, has_address_state_), timeout_timer_(context),
-      callbacks_(std::move(callbacks))
+  void on_address_claimed(std::function<void(jay::name, std::uint8_t)> on_address)
   {
-    addr_claimer_.set_callbacks(
-      jay::address_claimer::callbacks{ [this](auto name, auto address) -> void { on_address(name, address); },
-        [this](auto name) -> void { on_address_loss(name); },
-        [this]() -> void { on_begin_claiming(); },
-        [this](auto name, auto address) -> void { on_address_claim(name, address); },
-        [this](auto name) -> void { on_cannot_claim(name); } });
+    on_address_ = std::move(on_address);
   }
 
   /**
-   * @brief set the callbacks for the address mananger
-   * @param callbacks for getting data out of the object
+   * @brief Set the on lose address callback
+   * @param on_lose_address callback to call when an address is lost
    */
-  void set_callbacks(callbacks &&callbacks) { callbacks_ = std::move(callbacks); }
+  void on_address_lost(std::function<void(jay::name)> on_lose_address)
+  {
+    on_lose_address_ = std::move(on_lose_address);
+  }
+
+  /**
+   * @brief Set the on frame callback
+   * @param on_frame callback to call when a frame is ready to be sent
+   */
+  void on_frame(J1939OnFrame on_frame) { on_frame_ = std::move(on_frame); }
+
+  /**
+   * @brief Set the on error callback
+   * @param on_error callback to call when an error occurs
+   */
+  void on_error(J1939OnError on_error) { on_error_ = std::move(on_error); }
+
 
   /**
    * @brief Get the name object
@@ -149,8 +134,8 @@ private:
    */
   void on_address(jay::name name, std::uint8_t address)
   {
-    network_.insert(name, address);
-    if (callbacks_.on_address) { callbacks_.on_address(name, address); }
+    network_->insert(name, address);
+    if (on_address_) { on_address_(name, address); }
   }
 
   /**
@@ -160,8 +145,8 @@ private:
    */
   void on_address_loss(jay::name name)
   {
-    network_.release(name);
-    if (callbacks_.on_lose_address) { callbacks_.on_lose_address(name); }
+    network_->release(name);
+    if (on_lose_address_) { on_lose_address_(name); }
   }
 
   /**
@@ -187,7 +172,7 @@ private:
    */
   void on_address_claim(jay::name name, std::uint8_t address)
   {
-    if (callbacks_.on_frame) { callbacks_.on_frame(jay::frame::make_address_claim(name, address)); }
+    if (on_frame_) on_frame_(jay::frame::make_address_claim(name, address));
   }
 
   /**
@@ -196,18 +181,19 @@ private:
    */
   void on_cannot_claim(jay::name name)
   {
-    auto rand_delay = rand() % 153;// Add a random 0 -150 ms delay
+    static thread_local std::mt19937 rng{ std::random_device{}() };
+    std::uniform_int_distribution<int> dist(0, 150);
+    auto rand_delay = dist(rng);// Add a random 0 - 150 ms delay
     timeout_timer_.expires_from_now(boost::posix_time::millisec(rand_delay));
     timeout_timer_.async_wait([name, this](auto error_code) {
       if (error_code) { return on_fail("on_claim_timeout", error_code); }
-      callbacks_.on_frame(jay::frame::make_cannot_claim(static_cast<jay::payload>(name)));
+      if (on_frame_) on_frame_(jay::frame::make_cannot_claim(static_cast<jay::payload>(name)));
     });
   }
 
-
   /**
    * @brief Checks the for ignorable errors. Errors cant be ignored
-   * the error code is sent to the on_error callback
+   * the error code is sent to the on_error_ callback
    *
    * @param what - function name the error happened in
    * @param error_code - containing information regarding the error
@@ -216,17 +202,16 @@ private:
   {
     // Don't report these
     if (error_code == boost::asio::error::operation_aborted) { return; }
-    if (callbacks_.on_error) { callbacks_.on_error(what, error_code); }
+    if (on_error_) { on_error_(what, error_code); }
   }
 
 
 private:
   /// TODO: Instead of using timeout could use tick?
 
-
   // Injected
   boost::asio::io_context &context_;
-  jay::network &network_;
+  std::shared_ptr<jay::network> network_;
 
   // Internal
 
@@ -236,11 +221,15 @@ private:
   boost::sml::sm<jay::address_claimer> state_machine_;
   boost::asio::deadline_timer timeout_timer_;
 
-  callbacks callbacks_;
+  // Called when a local controller has claimed an address
+  std::function<void(jay::name, std::uint8_t)> on_address_;
+  // Called when a local controller loses their claimed an address
+  std::function<void(jay::name)> on_lose_address_;
+  // Called when a claim frame or cannot claim frame needs to be sent
+  J1939OnFrame on_frame_;
+  // Called when an internal error occurs, used for debugging
+  J1939OnError on_error_;
 };
 
 
 }// namespace jay
-
-
-#endif

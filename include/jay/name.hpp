@@ -1,14 +1,11 @@
 //
-// Copyright (c) 2022 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
+// Copyright (c) 2022 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no), 2025 Hong.Guo (hong.guo@advantech.com.cn)
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
-// Official repository: https://github.com/bjorn-jaes/jay
+// Official repository: https://github.com/guoh27/jay
 //
-
-#ifndef JAY_J1939_NAME_H
-#define JAY_J1939_NAME_H
 
 #pragma once
 
@@ -16,7 +13,7 @@
 #include <array>
 
 // Local
-#include "j1939.hpp"// name_t , cstdint
+#include "j1939_type.hpp"// name_t , cstdint
 
 namespace jay {
 
@@ -101,7 +98,7 @@ public:
         ((static_cast<name_t>(id_num)       & id_num_mask)       << id_num_start_bit)
   */
   /**
-   * Constuct name from existing name
+   * Construct name from existing name
    * @param name to construct from
    */
   name(const name_t name) : name_(name) {}
@@ -363,7 +360,7 @@ public:
     };
   }
 
-  /// TODO: Implement a to_string opterator?
+  /// TODO: Implement a to_string operator?
 
 private:
   static constexpr name_t slf_cfg_addr_mask = 0x80'00'00'00'00'00'00'00ULL;
@@ -392,5 +389,3 @@ private:
 static_assert(sizeof(name) == sizeof(name_t), "Size of name must be exactly 8 bytes");
 
 }// namespace jay
-
-#endif

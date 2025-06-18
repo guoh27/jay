@@ -1,39 +1,37 @@
 //
-// Copyright (c) 2022 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
+// Copyright (c) 2022 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no), 2025 Hong.Guo (hong.guo@advantech.com.cn)
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
-// Official repository: https://github.com/bjorn-jaes/jay
+// Official repository: https://github.com/guoh27/jay
 //
-
-#ifndef JAY_J1939_FRAME_H
-#define JAY_J1939_FRAME_H
-
 #pragma once
 
 // C++
 #include <array>
+#include <functional>// std::function
 #include <sstream>
 #include <string>
-
-// Libraries
-#include "header.hpp"
-#include "name.hpp"
 
 // Linux
 #include <linux/can.h>
 
+// Libraries
+#include "boost/asio.hpp"
+#include "header.hpp"
+#include "name.hpp"
 
-///
-/// TODO: Is this class really needed. Could just use a linux can_frame instead?
-/// TODO: Only really need to read from the header data.
-/// TODO: This class might generate confusion regarding payload size?
-///
 
 namespace jay {
 
 using payload = std::array<std::uint8_t, 8>;
+struct frame;
+
+// Alias
+using J1939OnError = std::function<void(const std::string, const boost::system::error_code)>;
+using J1939OnFrame = std::function<void(frame)>;
+using J1939ErrorHandler = std::function<void(const boost::system::error_code)>;
 
 /**
  *
@@ -104,8 +102,9 @@ struct frame
   static frame make_cannot_claim(jay::name name)
   {
     /// TODO: Replace payload with name type
-    return { frame_header(static_cast<std::uint8_t>(6), false, PF_ADDRESS_CLAIM, J1939_NO_ADDR, J1939_IDLE_ADDR, 8),
-      name };
+    return frame{
+      frame_header(static_cast<std::uint8_t>(6), false, PF_ADDRESS_CLAIM, J1939_NO_ADDR, J1939_IDLE_ADDR, 8), name
+    };
   }
 
   /// TODO: Look into commanded address command
@@ -132,16 +131,6 @@ struct frame
     return ss.str();
   }
 
-  /**
-   *TODO: Not needed?
-   */
-  static can_frame to_can(frame j1939_frame)
-  {
-    can_frame frame{};
-    std::memcpy(&frame, &j1939_frame, sizeof(j1939_frame));
-    return std::move(frame);
-  }
-
   /// TODO: Make into class and make sure that payload size change is updated in header
 
   frame_header header{};
@@ -149,6 +138,3 @@ struct frame
 };
 
 }// namespace jay
-
-
-#endif

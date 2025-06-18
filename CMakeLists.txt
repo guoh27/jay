@@ -1,10 +1,10 @@
 #
-# Copyright (c) 2020 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no)
+# Copyright (c) 2020 Bjørn Fuglestad, Jaersense AS (bjorn@jaersense.no), 2025 Hong.Guo (hong.guo@advantech.com.cn)
 #
 # Distributed under the Boost Software License, Version 1.0. (See accompanying
 # file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 #
-# Official repository: https://github.com/bjorn-jaes/jay
+# Official repository: https://github.com/guoh27/jay
 #
 
 cmake_minimum_required(VERSION 3.13)
@@ -14,8 +14,7 @@ cmake_minimum_required(VERSION 3.13)
 # ============================================================================================
 string(APPEND APPLICATION_NAME "jay")
 string(APPEND INCLUDE_DIR "include")
-#string(APPEND USR_INCLUDE_PREFIX "/usr/include/")
-#string(APPEND TRIPLE_LIB_PREFIX "/usr/lib/aarch64-linux-gnu/")
+
 
 # ============================================================================================
 # Project Description
@@ -33,16 +32,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 option(THREADS_PREFER_PTHREAD_FLAG "Prefere pthread threads" ON)
 
 
-option(BUILD_TESTING "Build jay tests." ON)
-option(BUILD_EXAMPLES "Build examples." ON)
-option(BUILD_DOCS "Build jay documentation." OFF)
+option(JAY_BUILD_TESTING "Build jay tests." ON)
+option(JAY_BUILD_EXAMPLES "Build examples." ON)
+option(JAY_BUILD_DOCS "Build jay documentation." OFF)
 
 # ============================================================================================
 # Libraries
 # ============================================================================================
 
-#find_package(PkgConfig REQUIRED)
-# Dont need to look for SML as its a single header file
 
 #Fing Canary
 if(NOT TARGET canary::canary)
@@ -83,12 +80,13 @@ target_link_libraries(
       Threads::Threads
 )
 
+# link sml when use cmake
 if(TARGET sml::sml)
-    target_link_libraries(
-        ${APPLICATION_NAME}
-        INTERFACE
+  target_link_libraries(
+    ${APPLICATION_NAME}
+      INTERFACE
         sml::sml
-)
+  )
 endif()
 
 target_compile_features(${APPLICATION_NAME} INTERFACE cxx_std_17)
@@ -98,7 +96,7 @@ target_compile_features(${APPLICATION_NAME} INTERFACE cxx_std_17)
 # =============================================
 
 #include(CTest)
-if(BUILD_TESTING)
+if(JAY_BUILD_TESTING)
   enable_testing()
   add_subdirectory(tests)
 endif()
@@ -106,14 +104,14 @@ endif()
 # =============================================
 # Build Examples
 # =============================================
-if(BUILD_EXAMPLES)
+if(JAY_BUILD_EXAMPLES)
   add_subdirectory(examples)
 endif()
 
 # =============================================
 # Build Doc
 # =============================================
-if (BUILD_DOCS)
+if (JAY_BUILD_DOCS)
   file(GLOB JAY_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIR}/${APPLICATION_NAME}/*.hpp")
   find_package(standardese REQUIRED)
   standardese_generate(jay_docs

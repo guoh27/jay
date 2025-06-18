@@ -4,8 +4,8 @@
 # Distributed under the MIT License, Version 1.0. (See accompanying
 # file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 #
-# Official repository: https://github.com/bjorn-jaes/jay
+# Official repository: https://github.com/guoh27/jay
 #
 
-add_executable(simple_example main.cpp j1939_connection.cpp)
+add_executable(simple_example main.cpp)
 target_link_libraries(simple_example jay::jay)
