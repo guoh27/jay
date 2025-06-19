@@ -47,6 +47,7 @@ public:
         [this](auto name) -> void { on_address_loss(name); },
         [this]() -> void { on_begin_claiming(); },
         [this](auto name, auto address) -> void { on_address_claim(name, address); },
+        [this]() { on_address_request(); },
         [this](auto name) -> void { on_cannot_claim(name); } });
   }
 
@@ -173,6 +174,11 @@ private:
   void on_address_claim(jay::name name, std::uint8_t address)
   {
     if (on_frame_) on_frame_(jay::frame::make_address_claim(name, address));
+  }
+
+  void on_address_request()
+  {
+    if (on_frame_) on_frame_(jay::frame::make_address_request());
   }
 
   /**

@@ -42,6 +42,7 @@ public:
     std::function<void(jay::name)> on_lose_address;
     std::function<void()> on_begin_claiming;
     std::function<void(jay::name, std::uint8_t)> on_address_claim;
+    std::function<void()> on_request;
     std::function<void(jay::name)> on_cannot_claim;
   };
 
@@ -62,6 +63,7 @@ public:
     assert(callbacks_.on_lose_address);
     assert(callbacks_.on_begin_claiming);
     assert(callbacks_.on_address_claim);
+    assert(callbacks_.on_request);
     assert(callbacks_.on_cannot_claim);
   }
 
@@ -346,6 +348,15 @@ private:
   }
 
   /**
+   * @brief Sends an address request to on frame callback
+   *
+   */
+  void send_request() const
+  {
+    if (callbacks_.on_request) { callbacks_.on_request(); }
+  }
+
+  /**
    * @brief Find an address and send address claim
    * @param claiming state
    * @param network of name address pairs
@@ -421,15 +432,16 @@ public:
 
       /// TODO: Check if the name already has an address at start up??
 
-      *boost::sml::state<st_no_address>
+      *boost::sml::state<st_no_address> + boost::sml::on_entry<boost::sml::_> / &self::send_request,
+      boost::sml::state<st_no_address>
         + boost::sml::on_entry<boost::sml::_>[&self::no_address_available] / &self::send_cannot_claim,
-      boost::sml::state<st_no_address> + boost::sml::event<ev_address_request> / &self::send_cannot_claim,
       boost::sml::state<st_no_address>
         + boost::sml::event<ev_start_claim>[&self::address_available] / &self::set_pref_address =
         boost::sml::state<st_claiming>,
       boost::sml::state<st_no_address>
         + boost::sml::event<ev_start_claim>[&self::no_address_available] / &self::send_cannot_claim,
 
+      boost::sml::state<st_claiming> + boost::sml::on_entry<boost::sml::_> / &self::send_request,
       boost::sml::state<st_claiming> + boost::sml::on_entry<boost::sml::_> / &self::begin_claiming_address,
       boost::sml::state<st_claiming> + boost::sml::event<ev_address_request> / &self::send_claiming,
       boost::sml::state<st_claiming>
