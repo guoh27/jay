@@ -35,7 +35,7 @@ public:
   virtual ~bus() = default;
 
   // async send of a single raw J1939 frame
-  virtual bool send(const jay::frame &fr) { return true; };
+  virtual bool send(const jay::frame &) { return true; };
 
   // local source address (SA) helper
   virtual std::uint8_t source_address() const { return 0xFF; };
@@ -43,8 +43,8 @@ public:
   boost::asio::strand<boost::asio::any_io_executor> &strand_;
 };
 
-constexpr std::uint32_t PGN_CM = 0x00EC00;// 60416
-constexpr std::uint32_t PGN_DT = 0x00EB00;// 60160
+constexpr std::uint32_t PGN_TP_CM = 0x00EC00;// 60416
+constexpr std::uint32_t PGN_TP_DT = 0x00EB00;// 60160
 
 // ──────────────────────────────────────────────────
 // TP Control Bytes (first byte of TP.CM payload)
@@ -59,7 +59,7 @@ inline std::uint8_t to_byte(Control c) { return static_cast<std::uint8_t>(c); }
 // ──────────────────────────────────────────────────
 struct TpSession
 {
-  enum class Direction { Tx, Rx } dir;
+  enum class Direction { Tx, Rx } dir{};
   std::vector<std::uint8_t> buffer;
 
   std::uint8_t total_packets{ 0 };
@@ -90,9 +90,9 @@ public:
   // Feed every incoming J1939 CAN frame to this dispatcher
   void on_can_frame(const jay::frame &fr)
   {
-    if (fr.header.pgn() == PGN_CM) {
+    if (fr.header.pgn() == PGN_TP_CM) {
       handle_cm(fr);
-    } else if (fr.header.pgn() == PGN_DT) {
+    } else if (fr.header.pgn() == PGN_TP_DT) {
       handle_dt(fr);
     }
     // else: ignore
@@ -152,7 +152,7 @@ private:
   bool send_bam_start(TpSession &s)
   {
     frame fr;
-    fr.header.pgn(PGN_CM);
+    fr.header.pgn(PGN_TP_CM);
     fr.header.pdu_specific(0xFF);
 
     fr.payload[0] = to_byte(Control::BAM);
@@ -164,6 +164,7 @@ private:
     fr.payload[6] = (s.pgn >> 8) & 0xFF;
     fr.payload[7] = (s.pgn >> 16) & 0xFF;
     if (!bus_.send(fr)) { return false; }
+
     // TODO: BAM wait
     return send_data_packets(s);
   }
@@ -171,14 +172,14 @@ private:
   bool send_rts(TpSession &s)
   {
     frame fr;
-    fr.header.pgn(PGN_CM);
+    fr.header.pgn(PGN_TP_CM);
     fr.header.pdu_specific(s.dest_sa);
 
     fr.payload[0] = to_byte(Control::RTS);
     fr.payload[1] = s.length & 0xFF;
     fr.payload[2] = s.length >> 8;
     fr.payload[3] = s.total_packets;
-    fr.payload[4] = 0x08;// we’ll start with 8 packets window
+    fr.payload[4] = 0x08;// we'll start with 8 packets window
     fr.payload[5] = s.pgn & 0xFF;
     fr.payload[6] = (s.pgn >> 8) & 0xFF;
     fr.payload[7] = (s.pgn >> 16) & 0xFF;
@@ -190,7 +191,7 @@ private:
   {
     while (s.next_seq <= s.total_packets && count--) {
       frame fr;
-      fr.header.pgn(PGN_CM);
+      fr.header.pgn(PGN_TP_CM);
       fr.header.pdu_specific(s.dest_sa);
 
       fr.payload[0] = s.next_seq;
@@ -217,8 +218,9 @@ private:
   bool send_eom_ack(const TpSession &s)
   {
     if (s.bam) return true;// not required
+
     frame fr;
-    fr.header.pgn(PGN_CM);
+    fr.header.pgn(PGN_TP_CM);
     fr.header.pdu_specific(s.dest_sa);
     fr.payload[0] = to_byte(Control::EOM);
     fr.payload[1] = s.length & 0xFF;
@@ -258,20 +260,26 @@ private:
 
   void start_rx_rts(const jay::frame &fr)
   {
+
+    // not send to self
+    if (fr.header.source_address() != bus_.source_address()) { return; }
+
     TpSession s;
     s.dir = TpSession::Direction::Rx;
     s.length = fr.payload[1] | (fr.payload[2] << 8);
     s.total_packets = fr.payload[3];
     s.dest_sa = fr.header.pdu_specific();
     s.src_sa = fr.header.source_address();
-    s.pgn = fr.payload[5] | (fr.payload[6] << 8) | (fr.payload[7] << 16);
+    s.pgn = get_payload_pgn(fr);
     s.buffer.resize(s.length);
     s.last_activity = std::chrono::steady_clock::now();
+
     auto key = make_key(s.src_sa, s.dest_sa);
     sessions_[key] = std::move(s);
+
     // send CTS for first block of 8
     frame cts;
-    cts.header.pgn(PGN_CM);
+    cts.header.pgn(PGN_TP_CM);
     cts.header.pdu_specific(fr.header.source_address());
     cts.payload = { to_byte(Control::CTS),
       0x08,
@@ -281,12 +289,12 @@ private:
       static_cast<std::uint8_t>(sessions_[key].pgn & 0xFF),
       static_cast<std::uint8_t>((sessions_[key].pgn >> 8) & 0xFF),
       static_cast<std::uint8_t>((sessions_[key].pgn >> 16) & 0xFF) };
+
     bus_.send(cts);
   }
 
   void handle_cts(const jay::frame &fr)
   {
-    auto pgn = fr.payload[5] | (fr.payload[6] << 8) | (fr.payload[7] << 16);
     auto key = make_key(bus_.source_address(), fr.header.source_address());
     if (auto it = sessions_.find(key); it != sessions_.end()) {
       auto count = fr.payload[1];
@@ -303,7 +311,7 @@ private:
     s.total_packets = fr.payload[3];
     s.dest_sa = 0xFF;
     s.src_sa = fr.header.source_address();
-    s.pgn = fr.payload[5] | (fr.payload[6] << 8) | (fr.payload[7] << 16);
+    s.pgn = get_payload_pgn(fr);
     s.buffer.resize(s.length);
     s.last_activity = std::chrono::steady_clock::now();
     auto key = make_key(s.src_sa, s.dest_sa);
@@ -316,19 +324,28 @@ private:
     auto it = sessions_.find(key);
     if (it == sessions_.end()) return;
 
-    auto &s = it->second;
+    auto &session = it->second;
     std::uint8_t seq = fr.payload[0];
-    if (seq < 1 || seq > s.total_packets) return;// bad
+    if (seq < 1 || seq > session.total_packets) return;// bad
 
     std::size_t offset = (seq - 1) * 7;
-    auto avail = std::min<std::size_t>(7, s.buffer.size() - offset);
-    std::copy_n(fr.payload.data() + 1, avail, s.buffer.data() + offset);
-    if (seq == s.total_packets) {
+    auto avail = std::min<std::size_t>(7, session.buffer.size() - offset);
+    std::copy_n(fr.payload.data() + 1, avail, session.buffer.data() + offset);
+    if (seq == session.total_packets) {
+
       // finished, deliver
-      if (rx_callback_) rx_callback_(s.pgn, s.buffer);
+      if (rx_callback_) {
+        frame_header hr;
+        hr.pgn(session.pgn);
+        hr.source_address(session.src_sa);
+        if (!session.bam) { hr.pdu_specific(session.dest_sa); }
+        hr.payload_length(session.buffer.size());
+        rx_callback_({ hr, session.buffer });
+      }
+
       sessions_.erase(it);
       // send EOM_ACK if not BAM
-      if (!s.bam) send_eom_ack(s);
+      if (!session.bam) send_eom_ack(session);
     }
   }
 
@@ -337,12 +354,13 @@ private:
     // nothing – handled in DT loop
   }
 
+  jay::pgn_t get_payload_pgn(const frame &fr) { return fr.payload[5] | (fr.payload[6] << 8) | (fr.payload[7] << 16); }
+
 public:
-  using rx_handler = std::function<void(std::uint32_t pgn, const std::vector<std::uint8_t> &data)>;
-  void set_rx_handler(rx_handler cb) { rx_callback_ = std::move(cb); }
+  void set_rx_handler(J1939OnData cb) { rx_callback_ = std::move(cb); }
 
 private:
   jay::bus &bus_;
-  rx_handler rx_callback_;
+  J1939OnData rx_callback_;
 };
 }// namespace jay

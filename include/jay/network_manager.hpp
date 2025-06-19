@@ -48,6 +48,13 @@ public:
   void insert(jay::address_manager &addr_man) { name_manager_map.insert({ addr_man.get_name(), addr_man }); }
 
   /**
+   * @brief Remove address manager from internal map
+   *
+   * @param addr_man to remove
+   */
+  void remove(jay::address_manager &addr_man) { name_manager_map.erase(addr_man.get_name()); }
+
+  /**
    * @brief Processes address claim and address request frames
    * by tuning them into events and passing them to the state machine
    * @note also registers new controllers into the network and updates their address

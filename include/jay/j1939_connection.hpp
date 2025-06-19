@@ -26,15 +26,6 @@
 #include "transport_protocol.hpp"
 
 namespace jay {
-
-struct frame_with_delay
-{
-  jay::frame frame;
-  std::chrono::steady_clock::duration delay;
-
-  frame_with_delay(jay::frame f, std::chrono::steady_clock::duration d) : frame(f), delay(d) {}
-};
-
 /**
  * J1939 Connection analog for reading and sending j1939 messages
  *
@@ -42,14 +33,12 @@ struct frame_with_delay
  * Incoming data is also passed along using a callbacks.
  * Outgoing can frames are also queued before being sent.
  * @note The connection manages its own lifetime
- * @todo look into using different types of queues to store
  * outgoing buffers such as timed queues and so on
  */
 class j1939_connection : public std::enable_shared_from_this<j1939_connection>
 {
 public:
   using J1939OnSelf = std::function<void(j1939_connection *)>;
-  using J1939OnData = std::function<void(std::uint32_t /*pgn*/, const std::vector<std::uint8_t> &)>;
 
   class bus_adapter : public bus
   {
@@ -79,8 +68,8 @@ public:
    */
   j1939_connection(boost::asio::io_context &io, std::shared_ptr<jay::network> net)
     : socket_(boost::asio::make_strand(io)), network_(std::move(net)), strand_(socket_.get_executor()),
-      bus_(std::make_shared<bus_adapter>(strand_, [this](const jay::frame &fr) { return this->send(fr); })),
-      tp_(std::make_shared<transport_protocol>(*bus_))
+      bus_(std::make_unique<bus_adapter>(strand_, [this](const jay::frame &fr) { return this->send(fr); })),
+      tp_(std::make_unique<transport_protocol>(*bus_))
   {}
 
   /**
@@ -96,8 +85,8 @@ public:
     std::optional<jay::name> local_name,
     std::optional<jay::name> target_name)
     : socket_(boost::asio::make_strand(io)), network_(std::move(net)), strand_(socket_.get_executor()),
-      bus_(std::make_shared<bus_adapter>(strand_, [this](const jay::frame &fr) { return this->send(fr); })),
-      tp_(std::make_shared<transport_protocol>(*bus_)), local_name_(local_name), target_name_(target_name)
+      bus_(std::make_unique<bus_adapter>(strand_, [this](const jay::frame &fr) { return this->send(fr); })),
+      tp_(std::make_unique<transport_protocol>(*bus_)), local_name_(local_name), target_name_(target_name)
   {}
 
   /**
@@ -180,6 +169,12 @@ public:
    */
   void on_error(J1939OnError on_error) { on_error_ = std::move(on_error); }
 
+  void on_data(J1939OnData cb)
+  {
+    on_data_ = cb;
+    tp_->set_rx_handler(cb);
+  }
+
   /**
    * @brief Set the local j1939 name
    * @param name of the device this connection is sending
@@ -228,23 +223,27 @@ public:
       for (std::size_t i = 0; i < data.payload.size(); ++i) { fr.payload[i] = data.payload[i]; }
       return send(fr);
     } else {
+      auto source_address = network_->get_address(*local_name_);
+      if (source_address == J1939_IDLE_ADDR) {
+        on_error_(
+          "Socket has no source address", boost::system::errc::make_error_code(boost::system::errc::invalid_argument));
+        return false;
+      }
+      bus_->source_address(source_address);
       return tp_->send(data.payload, data.header.pdu_specific(), data.header.pgn());
     }
   }
-
-  void set_on_tp_data(J1939OnData cb) { tp_->set_rx_handler(std::move(cb)); }
 
   /**
    * Send frame to connected controller application
    * @param j1939_frame that will be sent, both source address
    * and PDU specifier is set by the socket
    * @return true if written, false if an error occurred
-   * @throw std::invalid_argument if no connected controller
    * app name has been set
    */
   bool send(const jay::frame &j1939_frame)
   {
-    if (!j1939_frame.header.is_broadcast()) {
+    if (j1939_frame.header.is_broadcast()) {
       auto source_address = network_->get_address(*local_name_);
       if (source_address == J1939_IDLE_ADDR) {
         on_error_(
@@ -253,7 +252,6 @@ public:
       }
 
       std::memcpy(&out_buffer_, &j1939_frame, sizeof(j1939_frame));
-
       out_buffer_.header.source_address(source_address);
       return send_raw(out_buffer_);
     } else {
@@ -332,11 +330,14 @@ private:
       canary::net::buffer(&buffer_, sizeof(buffer_)), [self{ shared_from_this() }](auto error, auto) {
         if (error) { return self->on_error("read", error); }
 
-        // Always push to TP for possible re‑assembly
-        self->tp_->on_can_frame(self->buffer_);
 
         // Trigger callback with frame if we are supposed to get the frame
-        if (self->check_address()) { self->on_read_(self->buffer_); }
+        if (self->check_address()) {
+          self->tp_->on_can_frame(self->buffer_);
+
+          self->on_read_(self->buffer_);
+          self->on_data_({ self->buffer_.header, { self->buffer_.payload.begin(), self->buffer_.payload.end() } });
+        }
 
         // Clear buffer
         self->buffer_.payload.fill(0);
@@ -347,7 +348,7 @@ private:
       });
   }
 
-  bool write(const jay::frame &j1939_frame)
+  bool write(const frame &j1939_frame)
   {
     boost::system::error_code ec;
     auto n = socket_.send(canary::net::buffer(&j1939_frame, sizeof(j1939_frame)), 0, ec);
@@ -407,8 +408,8 @@ private:
   std::shared_ptr<jay::network> network_; /**< Network reference for querying network for addresses */
   boost::asio::strand<boost::asio::any_io_executor> strand_;
 
-  std::shared_ptr<bus_adapter> bus_;
-  std::shared_ptr<transport_protocol> tp_;
+  std::unique_ptr<bus_adapter> bus_;
+  std::unique_ptr<transport_protocol> tp_;
 
   /**
    * @brief Callback for when connection is stated
@@ -423,13 +424,13 @@ private:
   J1939OnSelf on_destroy_;
 
   /**
-   * @brief Callback for when data is received
+   * @brief Callback for when frame is received
    * @note is required
    */
   J1939OnFrame on_read_;
 
   /**
-   * @brief Callback for when data is sent
+   * @brief Callback for when frame is sent
    * @note is optional
    */
   J1939OnFrame on_send_;
@@ -442,6 +443,12 @@ private:
    * @note is required
    */
   J1939OnError on_error_;
+
+  /**
+   * @brief Callback for when data is received
+   *
+   */
+  J1939OnData on_data_;
 
   std::optional<jay::name> local_name_{}; /**< Optional local j1939 name */
   std::optional<jay::name> target_name_{}; /**< Optional targeted j1939 name */

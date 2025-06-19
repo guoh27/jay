@@ -25,13 +25,13 @@
 
 namespace jay {
 
-using payload = std::array<std::uint8_t, 8>;
 struct frame;
-
 // Alias
 using J1939OnError = std::function<void(const std::string, const boost::system::error_code)>;
 using J1939OnFrame = std::function<void(frame)>;
 using J1939ErrorHandler = std::function<void(const boost::system::error_code)>;
+
+using payload = std::array<std::uint8_t, 8>;
 
 /**
  *

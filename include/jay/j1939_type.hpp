@@ -119,9 +119,4 @@ constexpr pgn_t J1939_PGN_PDU1_MAX{ 0x3FF00U };
  */
 constexpr pgn_t J1939_PGN_MAX{ 0x3FFFFU };
 
-/*
- * ?
- */
-constexpr pgn_t J1939_NO_PGN{ 0x40000U };
-
 }// namespace jay

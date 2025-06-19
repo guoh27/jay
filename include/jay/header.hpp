@@ -85,12 +85,12 @@ public:
     const std::uint8_t pdu_format,
     const std::uint8_t pdu_specific,
     const std::uint8_t source_address,
-    const std::size_t payload = 0)
+    const std::size_t payload_length = 0)
     : frame_header(priority,
       (static_cast<std::uint32_t>(data_page) << 16) | (static_cast<std::uint32_t>(pdu_format) << 8)
         | (static_cast<std::uint32_t>(pdu_specific)),
       source_address,
-      payload)
+      payload_length)
   {}
 
   /**
@@ -105,19 +105,19 @@ public:
   frame_header(const priority_t priority,
     const pgn_t pgn,
     const std::uint8_t source_address,
-    const std::size_t payload = 0)
+    const std::size_t payload_length = 0)
     : frame_header((std::clamp(static_cast<std::uint32_t>(priority), 0U, 7U) << 26) | (pgn << 8) | source_address,
-      payload)
+      payload_length)
   {}
 
   /**
    * @brief Construct a j1939 frame header from complete header data
    * @param header_data containing the 29 bits that j1939 structures use
    */
-  explicit frame_header(const std::uint32_t header_data, const std::uint8_t payload = 0) : frame_header()
+  explicit frame_header(const std::uint32_t header_data, const std::uint8_t payload_length = 0) : frame_header()
   {
     header_.id(header_data);
-    header_.payload_length(payload);
+    header_.payload_length(payload_length);
   }
 
 

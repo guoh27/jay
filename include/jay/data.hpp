@@ -17,6 +17,9 @@
 #include "header.hpp"
 
 namespace jay {
+struct data;
+
+using J1939OnData = std::function<void(const data &)>;
 
 using data_payload = std::vector<std::uint8_t>;
 

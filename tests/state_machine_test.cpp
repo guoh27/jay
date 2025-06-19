@@ -43,6 +43,9 @@ protected:
         // std::cout << std::hex << name << " claiming address: " << std::hex << address << std::endl;
         claim_queue.push({ name, address });
       },
+      [this]() {
+
+      },
       [this](jay::name name) -> void {
         // std::cout << std::hex << name << " cant claim address" << std::endl;
         cannot_claim_queue.push(name);
@@ -50,10 +53,10 @@ protected:
   }
 
   //
-  virtual ~StateMachineTest() {}
+  ~StateMachineTest() override = default;
 
   //
-  virtual void SetUp() override
+  void SetUp() override
   {
     // Clear queues
     claim_queue = std::queue<std::pair<jay::name, std::uint8_t>>{};
@@ -61,7 +64,7 @@ protected:
   }
 
   //
-  virtual void TearDown() override { j1939_network.clear(); }
+  void TearDown() override { j1939_network.clear(); }
 
 public:
   uint64_t local_name{ 0xFFU };
@@ -93,21 +96,21 @@ TEST_F(StateMachineTest, Jay_State_Machine_NoAddress_Test)
   ASSERT_EQ(cannot_claim_queue.front(), local_name);
   cannot_claim_queue.pop();
 
-  auto addesses_used = j1939_network.address_count();
+  auto addresses_used = j1939_network.address_count();
   auto names_inserted = j1939_network.name_count();
 
   // Process timeout, which should do nothing
   state_machine.process_event(jay::address_claimer::ev_timeout{});
   ASSERT_EQ(claim_queue.size(), 0);
   ASSERT_EQ(cannot_claim_queue.size(), 0);
-  ASSERT_EQ(j1939_network.address_count(), addesses_used);
+  ASSERT_EQ(j1939_network.address_count(), addresses_used);
   ASSERT_EQ(j1939_network.name_count(), names_inserted);
 
   // Process address claim, which should do nothing
   state_machine.process_event(jay::address_claimer::ev_address_claim{ 0xAA, address });
   ASSERT_EQ(claim_queue.size(), 0);
   ASSERT_EQ(cannot_claim_queue.size(), 0);
-  ASSERT_EQ(j1939_network.address_count(), addesses_used);
+  ASSERT_EQ(j1939_network.address_count(), addresses_used);
   ASSERT_EQ(j1939_network.name_count(), names_inserted);
 
   // Start address claim - creates address claim frame
@@ -128,7 +131,7 @@ TEST_F(StateMachineTest, Jay_State_Machine_NoAddress_Test)
     j1939_network.insert(i, i);
   }
 
-  // Start address claim - but preffered address cant be claimed address required
+  // Start address claim - but proffered address cant be claimed address required
   state_machine.process_event(jay::address_claimer::ev_start_claim{ address });
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
 
