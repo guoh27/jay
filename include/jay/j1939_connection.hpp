@@ -337,12 +337,11 @@ private:
     socket_.async_receive(canary::net::buffer(&buffer_, sizeof(buffer_)), [this](auto error, auto) {
       if (error) { return on_error("read", error); }
 
+      on_read_(buffer_);
 
       // Trigger callback with frame if we are supposed to get the frame
       if (check_address()) {
         tp_->on_can_frame(buffer_);
-
-        on_read_(buffer_);
         on_data_({ buffer_.header, { buffer_.payload.begin(), buffer_.payload.end() } });
       }
 
