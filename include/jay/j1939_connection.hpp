@@ -35,7 +35,7 @@ namespace jay {
  * @note The connection manages its own lifetime
  * outgoing buffers such as timed queues and so on
  */
-class j1939_connection : public std::enable_shared_from_this<j1939_connection>
+class j1939_connection
 {
 public:
   using J1939OnSelf = std::function<void(j1939_connection *)>;
@@ -105,12 +105,20 @@ public:
    */
   bool open()
   {
-    try {
-      auto endpoint = canary::raw::endpoint{ canary::get_interface_index(network_->get_interface_name()) };
-      socket_.open(endpoint.protocol());
-      socket_.bind(endpoint);
-    } catch (const boost::system::error_code &ec) {
+    canary::error_code ec;
+    auto endpoint = canary::raw::endpoint{ canary::get_interface_index(network_->get_interface_name(), ec) };
+    if (ec.failed()) {
       if (on_error_) { on_error_("open " + network_->get_interface_name() + " failed", ec); }
+      return false;
+    }
+    socket_.open(endpoint.protocol(), ec);
+    if (ec.failed()) {
+      if (on_error_) { on_error_("open " + network_->get_interface_name() + " failed", ec); }
+      return false;
+    }
+    socket_.bind(endpoint, ec);
+    if (ec.failed()) {
+      if (on_error_) { on_error_("bind " + network_->get_interface_name() + " failed", ec); }
       return false;
     }
     return true;
@@ -326,26 +334,25 @@ private:
    */
   void async_read()
   {
-    socket_.async_receive(
-      canary::net::buffer(&buffer_, sizeof(buffer_)), [self{ shared_from_this() }](auto error, auto) {
-        if (error) { return self->on_error("read", error); }
+    socket_.async_receive(canary::net::buffer(&buffer_, sizeof(buffer_)), [this](auto error, auto) {
+      if (error) { return on_error("read", error); }
 
 
-        // Trigger callback with frame if we are supposed to get the frame
-        if (self->check_address()) {
-          self->tp_->on_can_frame(self->buffer_);
+      // Trigger callback with frame if we are supposed to get the frame
+      if (check_address()) {
+        tp_->on_can_frame(buffer_);
 
-          self->on_read_(self->buffer_);
-          self->on_data_({ self->buffer_.header, { self->buffer_.payload.begin(), self->buffer_.payload.end() } });
-        }
+        on_read_(buffer_);
+        on_data_({ buffer_.header, { buffer_.payload.begin(), buffer_.payload.end() } });
+      }
 
-        // Clear buffer
-        self->buffer_.payload.fill(0);
-        self->buffer_.header.id(0);
+      // Clear buffer
+      buffer_.payload.fill(0);
+      buffer_.header.id(0);
 
-        // Queue another read
-        self->async_read();
-      });
+      // Queue another read
+      async_read();
+    });
   }
 
   bool write(const frame &j1939_frame)

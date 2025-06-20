@@ -7,9 +7,8 @@
 // Official repository: https://github.com/guoh27/jay
 //
 
-#include <gtest/gtest.h>
-
 #include "jay/address_manager.hpp"
+#include <gtest/gtest.h>
 
 // C++
 #include <chrono>
@@ -22,17 +21,15 @@ protected:
   //
   explicit AddressManagerTest()
   {
-
     j1939_network = std::make_shared<jay::network>("vcan0");
     addr_mng = new jay::address_manager(io, local_name, j1939_network);
     /// Outputs used for debugging
-    addr_mng->on_frame([this](jay::frame frame) -> void {// On output frame
+    addr_mng->on_frame([this](jay::frame frame) -> void {
       // std::cout << "Sending: " << frame.to_string() << std::endl;
       frame_queue.push(frame);
     });
-    addr_mng->on_error([](std::string what, auto error) -> void {// ON error
-      std::cout << what << " : " << error.message() << std::endl;
-    });
+    addr_mng->on_error(
+      [](std::string what, auto error) -> void { std::cout << what << " : " << error.message() << std::endl; });
   }
 
   //
@@ -64,7 +61,7 @@ TEST_F(AddressManagerTest, Jay_Address_Manager_Test)
   // Return cannot claim address
   addr_mng->address_request(jay::address_claimer::ev_address_request{});
 
-  // Enought time for timeout event to trigger
+  // Enough time for timeout event to trigger
   io.run_for(std::chrono::milliseconds(260));
   io.restart();
 
@@ -86,7 +83,7 @@ TEST_F(AddressManagerTest, Jay_Address_Manager_Test)
   io.run_for(std::chrono::milliseconds(260));
   io.restart();
 
-  // Should claim address 0x1
+  // Should claim address 0x00
   std::uint8_t address_0{ 0x00U };
   addr_mng->start_address_claim(address_0);
 
@@ -98,8 +95,8 @@ TEST_F(AddressManagerTest, Jay_Address_Manager_Test)
 
   ASSERT_EQ(frame_queue.size(), 1);
 
-  /// Address claim frame
-  frame = frame_queue.front();
+  /// Address claim frame (modified: expect ADDRESS_CLAIM instead of REQUEST)
+  frame = frame_queue.back();
   ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
   ASSERT_EQ(frame.header.pdu_specific(), jay::J1939_NO_ADDR);
   ASSERT_EQ(frame.header.source_address(), address_0);
@@ -110,7 +107,7 @@ TEST_F(AddressManagerTest, Jay_Address_Manager_Test)
   ASSERT_FALSE(j1939_network->available(address_0));
   ASSERT_EQ(j1939_network->get_address(local_name), address_0);
 
-  // Should return address claim 1 frame
+  // Should return address claim frame on request
   addr_mng->address_request(jay::address_claimer::ev_address_request{});
 
   io.run_for(std::chrono::milliseconds(20));
@@ -128,20 +125,20 @@ TEST_F(AddressManagerTest, Jay_Address_Manager_Test)
     j1939_network->insert(i, i);
 
     // Conflicting claim should change to new address
-    addr_mng->address_claim(jay::address_claimer::ev_address_claim{ jay::name{ i }, static_cast<std::uint8_t>(i) });
+    addr_mng->address_claim(jay::address_claimer::ev_address_claim{ jay::name{ i }, i });
 
     io.run_for(std::chrono::milliseconds(260));// Give timeout time to trigger
     io.restart();
 
     ASSERT_EQ(frame_queue.size(), 1);
-    frame = frame_queue.front();
+    auto frame = frame_queue.front();
     ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
     ASSERT_EQ(frame.header.pdu_specific(), jay::J1939_NO_ADDR);
-    ASSERT_EQ(frame.header.source_address(), i + 1);
+    ASSERT_EQ(frame.header.source_address(), static_cast<std::uint8_t>(i + 1));
     frame_queue.pop();
 
     ASSERT_TRUE(j1939_network->in_network(local_name));
-    ASSERT_EQ(j1939_network->get_address(local_name), i + 1);
+    ASSERT_EQ(j1939_network->get_address(local_name), static_cast<std::uint8_t>(i + 1));
   }
 
   // Insert claim into network

@@ -40,7 +40,12 @@ public:
    */
   address_manager(boost::asio::io_context &context, jay::name name, std::shared_ptr<jay::network> network)
     : context_(context), network_(network), addr_claimer_(name), claim_state_(), has_address_state_(),
-      state_machine_(addr_claimer_, *network, claim_state_, has_address_state_), timeout_timer_(context)
+      state_machine_(addr_claimer_,
+        *network_,
+        claim_state_,
+        has_address_state_,
+        jay::address_claimer::ev_start_claim{}),
+      timeout_timer_(context_)
   {
     addr_claimer_.set_callbacks(
       jay::address_claimer::callbacks{ [this](auto name, auto address) -> void { on_address(name, address); },
@@ -194,6 +199,11 @@ private:
     timeout_timer_.async_wait([name, this](auto error_code) {
       if (error_code) { return on_fail("on_claim_timeout", error_code); }
       if (on_frame_) on_frame_(jay::frame::make_cannot_claim(static_cast<jay::payload>(name)));
+
+      if (name.self_config_address()) {
+        boost::asio::post(
+          context_, [this]() { state_machine_.process_event(jay::address_claimer::ev_random_retry{}); });
+      }
     });
   }
 

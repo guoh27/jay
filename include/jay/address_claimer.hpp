@@ -106,6 +106,10 @@ public:
     std::uint8_t address{ J1939_NO_ADDR };
   };
 
+  struct st_address_lost
+  {
+  };
+
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
   //@                                 Events                         @//
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
@@ -138,6 +142,10 @@ public:
    * @brief Event used when time has run out for address claiming
    */
   struct ev_timeout
+  {
+  };
+
+  struct ev_random_retry
   {
   };
 
@@ -189,6 +197,10 @@ private:
   {
     return address_conflict(l_address, r_address) && !address_priority(name);
   }
+
+  bool retry_allowed(const network &net) const { return name_.self_config_address() && address_available(net); }
+
+  bool retry_disallowed(const network &net) const { return !name_.self_config_address() || !address_available(net); }
 
   /// State specific guards
 
@@ -364,6 +376,7 @@ private:
   void begin_claiming_address(st_claiming &claiming, const network &network) const
   {
     if (callbacks_.on_begin_claiming) { callbacks_.on_begin_claiming(); }
+    claiming.address = network.find_address(name_, claiming.address, false);
     claim_address(claiming, network);
   }
 
@@ -426,53 +439,46 @@ public:
    */
   auto operator()() const
   {
-    return boost::sml::make_transition_table(
+    using namespace boost::sml;
+    return make_transition_table(
+      // No Address
+      *state<st_no_address> + on_entry<_> / &self::send_request,
+      state<st_no_address> + event<ev_address_request> / &self::send_cannot_claim,
+      state<st_no_address> + event<ev_start_claim>[&self::address_available] / &self::set_pref_address =
+        state<st_claiming>,
+      state<st_no_address> + event<ev_start_claim>[&self::no_address_available] / &self::send_cannot_claim,
 
-      /// Start without address, start_claim sets preferred address
+      // Claiming
+      state<st_claiming> + on_entry<_> / &self::begin_claiming_address,
+      state<st_claiming> + event<ev_address_request> / &self::send_claiming,
+      state<st_claiming> + event<ev_address_claim>[&self::claiming_priority] / &self::send_claiming,
+      state<st_claiming> + event<ev_address_claim>[&self::claiming_loss] / &self::begin_claiming_address,
+      state<st_claiming> + event<ev_address_claim>[&self::claiming_failure] = state<st_address_lost>,
+      state<st_claiming> + event<ev_timeout>[&self::valid_address] / &self::set_claimed_address = state<st_has_address>,
+      state<st_claiming> + event<ev_timeout>[&self::no_valid_address] = state<st_no_address>,
 
-      /// TODO: Check if the name already has an address at start up??
+      // Has Address
+      state<st_has_address> + on_entry<_> / &self::notify_address_gain,
+      state<st_has_address> + event<ev_address_request> / &self::send_claimed,
+      state<st_has_address> + event<ev_address_claim>[&self::claimed_priority] / &self::send_claimed,
+      state<st_has_address> + event<ev_address_claim>[&self::claimed_loss] / &self::set_claiming_address =
+        state<st_claiming>,
+      state<st_has_address> + event<ev_address_claim>[&self::claimed_failure] = state<st_address_lost>,
+      state<st_has_address> + boost::sml::on_exit<_> / &self::notify_address_loss,
 
-      *boost::sml::state<st_no_address> + boost::sml::on_entry<boost::sml::_> / &self::send_request,
-      boost::sml::state<st_no_address>
-        + boost::sml::on_entry<boost::sml::_>[&self::no_address_available] / &self::send_cannot_claim,
-      boost::sml::state<st_no_address>
-        + boost::sml::event<ev_start_claim>[&self::address_available] / &self::set_pref_address =
-        boost::sml::state<st_claiming>,
-      boost::sml::state<st_no_address>
-        + boost::sml::event<ev_start_claim>[&self::no_address_available] / &self::send_cannot_claim,
-
-      boost::sml::state<st_claiming> + boost::sml::on_entry<boost::sml::_> / &self::send_request,
-      boost::sml::state<st_claiming> + boost::sml::on_entry<boost::sml::_> / &self::begin_claiming_address,
-      boost::sml::state<st_claiming> + boost::sml::event<ev_address_request> / &self::send_claiming,
-      boost::sml::state<st_claiming>
-        + boost::sml::event<ev_address_claim>[&self::claiming_priority] / &self::send_claiming,
-      boost::sml::state<st_claiming> + boost::sml::event<ev_address_claim>[&self::claiming_loss] / &self::claim_address,
-      boost::sml::state<st_claiming> + boost::sml::event<ev_address_claim>[&self::claiming_failure] =
-        boost::sml::state<st_no_address>,
-      boost::sml::state<st_claiming>
-        + boost::sml::event<ev_timeout>[&self::valid_address] / &self::set_claimed_address =
-        boost::sml::state<st_has_address>,
-      boost::sml::state<st_claiming> + boost::sml::event<ev_timeout>[&self::no_valid_address] =
-        boost::sml::state<st_no_address>,
-
-      boost::sml::state<st_has_address> + boost::sml::on_entry<boost::sml::_> / &self::notify_address_gain,
-      boost::sml::state<st_has_address> + boost::sml::event<ev_address_request> / &self::send_claimed,
-      boost::sml::state<st_has_address>
-        + boost::sml::event<ev_address_claim>[&self::claimed_priority] / &self::send_claimed,
-      boost::sml::state<st_has_address>
-        + boost::sml::event<ev_address_claim>[&self::claimed_loss] / &self::set_claiming_address =
-        boost::sml::state<st_claiming>,
-      boost::sml::state<st_has_address> + boost::sml::event<ev_address_claim>[&self::claimed_failure] =
-        boost::sml::state<st_no_address>,
-      boost::sml::state<st_has_address> + boost::sml::on_exit<boost::sml::_> / &self::notify_address_loss
-
-    );
+      // Address Lost
+      state<st_address_lost> + on_entry<_> / &self::send_cannot_claim,
+      state<st_address_lost> + event<ev_address_request> / &self::send_cannot_claim,
+      state<st_address_lost> + event<ev_random_retry>[&self::retry_allowed] / &self::set_pref_address =
+        state<st_claiming>,
+      state<st_address_lost> + event<ev_random_retry>[&self::retry_disallowed] / &self::send_cannot_claim =
+        state<st_no_address>);
   }
 
 private:
   // Global state data
 
-  // Name of the device whome we are claiming an address for
+  // Name of the device whom we are claiming an address for
   const name name_{};
 
   // Callbacks for notifying users of state machine

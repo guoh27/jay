@@ -80,7 +80,8 @@ public:
   boost::sml::sm<jay::address_claimer, boost::sml::testing> state_machine{ addr_claimer,
     j1939_network,
     claim_state_,
-    has_address_state_ };
+    has_address_state_,
+    jay::address_claimer::ev_start_claim{} };
 };
 
 TEST_F(StateMachineTest, Jay_State_Machine_NoAddress_Test)
@@ -217,12 +218,12 @@ TEST_F(StateMachineTest, Jay_State_Machine_Claiming_Test)
   ASSERT_EQ(claim_pair.second, 0xB6U);
   claim_queue.pop();
 
-  // Timout event into Has address state
+  // Timeout event into Has address state
   state_machine.process_event(jay::address_claimer::ev_timeout{});
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_has_address>));
   ASSERT_TRUE(j1939_network.in_network(local_name));
 
-  // Change to no address state and manualy realease name from network
+  // Change to no address state and manually release name from network
   j1939_network.release(local_name);
   state_machine.set_current_states(boost::sml::state<jay::address_claimer::st_no_address>);
   ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_no_address>));
@@ -240,7 +241,7 @@ TEST_F(StateMachineTest, Jay_State_Machine_Claiming_Test)
   ASSERT_EQ(claim_pair.second, 0xB6U);// First available
   claim_queue.pop();
 
-  // Fill remainging addresses, untill none are available
+  // Fill remaining addresses, until none are available
   for (uint8_t i = 0xB6U; i < jay::J1939_IDLE_ADDR; i++) {/// Fill network
     j1939_network.insert(i, i);
     state_machine.process_event(jay::address_claimer::ev_address_claim{ i, i });
@@ -262,7 +263,7 @@ TEST_F(StateMachineTest, Jay_State_Machine_Claiming_Test)
   ASSERT_TRUE(j1939_network.full());
 
   // No address available means falling to no address state
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_no_address>));
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_address_lost>));
 }
 
 TEST_F(StateMachineTest, Jay_State_Machine_HasAddress_Test)
@@ -325,13 +326,13 @@ TEST_F(StateMachineTest, Jay_State_Machine_HasAddress_Test)
   ASSERT_EQ(claim_pair.second, 171);
   claim_queue.pop();
 
-  // Fill remainging addresses
+  // Fill remaining addresses
   for (uint8_t i = 0; i < jay::J1939_NO_ADDR; i++) {/// Fill network
     j1939_network.insert(i, i);
   }
 
   state_machine.process_event(jay::address_claimer::ev_address_claim{ 0x0, 171 });
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_no_address>));
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_address_lost>));
 
   // Sends cannot claim as no address is available
   ASSERT_EQ(cannot_claim_queue.size(), 1);
