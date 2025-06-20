@@ -66,6 +66,8 @@ struct TpSession
   std::uint8_t next_seq{ 1 };
   std::uint16_t length{ 0 };
 
+  std::uint8_t window_size{ 0xFF };
+
   jay::address_t dest_sa{};
   jay::address_t src_sa{};
   pgn_t pgn{};
@@ -153,13 +155,15 @@ private:
   {
     frame fr;
     fr.header.pgn(PGN_TP_CM);
-    fr.header.pdu_specific(0xFF);
+    fr.header.pdu_specific(jay::J1939_NO_ADDR);
+    fr.header.source_address(s.src_sa);
+    fr.header.payload_length(8);
 
     fr.payload[0] = to_byte(Control::BAM);
     fr.payload[1] = s.length & 0xFF;
     fr.payload[2] = s.length >> 8;
     fr.payload[3] = s.total_packets;
-    fr.payload[4] = 0x20;// packets per CTS (unused for BAM)
+    fr.payload[4] = s.window_size;//(unused for BAM)
     fr.payload[5] = s.pgn & 0xFF;
     fr.payload[6] = (s.pgn >> 8) & 0xFF;
     fr.payload[7] = (s.pgn >> 16) & 0xFF;
@@ -174,12 +178,14 @@ private:
     frame fr;
     fr.header.pgn(PGN_TP_CM);
     fr.header.pdu_specific(s.dest_sa);
+    fr.header.source_address(s.src_sa);
+    fr.header.payload_length(8);
 
     fr.payload[0] = to_byte(Control::RTS);
     fr.payload[1] = s.length & 0xFF;
     fr.payload[2] = s.length >> 8;
     fr.payload[3] = s.total_packets;
-    fr.payload[4] = 0x08;// we'll start with 8 packets window
+    fr.payload[4] = s.window_size;
     fr.payload[5] = s.pgn & 0xFF;
     fr.payload[6] = (s.pgn >> 8) & 0xFF;
     fr.payload[7] = (s.pgn >> 16) & 0xFF;
@@ -193,17 +199,22 @@ private:
       frame fr;
       fr.header.pgn(PGN_TP_CM);
       fr.header.pdu_specific(s.dest_sa);
+      fr.header.source_address(s.src_sa);
+      fr.header.payload_length(8);
 
       fr.payload[0] = s.next_seq;
       std::size_t offset = (s.next_seq - 1) * 7;
       auto avail = std::min<std::size_t>(7, s.buffer.size() - offset);
       std::copy_n(s.buffer.data() + offset, avail, fr.payload.begin() + 1);
+
       if (!bus_.send(fr)) {
         // TODO: wait
         return false;
       }
+
       ++s.next_seq;
     }
+
     if (s.next_seq > s.total_packets) {
       send_eom_ack(s);
       auto key = make_key(s.src_sa, s.dest_sa);
@@ -221,7 +232,11 @@ private:
 
     frame fr;
     fr.header.pgn(PGN_TP_CM);
-    fr.header.pdu_specific(s.dest_sa);
+    // opposite direction
+    fr.header.pdu_specific(s.src_sa);
+    fr.header.source_address(s.dest_sa);
+    fr.header.payload_length(8);
+
     fr.payload[0] = to_byte(Control::EOM);
     fr.payload[1] = s.length & 0xFF;
     fr.payload[2] = s.length >> 8;
@@ -258,39 +273,48 @@ private:
     }
   }
 
+  void response_cts(const TpSession &session)
+  {
+    // send CTS
+    frame cts;
+    cts.header.pgn(PGN_TP_CM);
+    // opposite direction
+    cts.header.pdu_specific(session.src_sa);
+    cts.header.source_address(session.dest_sa);
+    cts.header.payload_length(8);
+
+    cts.payload = { to_byte(Control::CTS),
+      session.window_size,
+      session.next_seq,
+      0,// reserved 2 bytes
+      0,
+      static_cast<std::uint8_t>(session.pgn & 0xFF),
+      static_cast<std::uint8_t>((session.pgn >> 8) & 0xFF),
+      static_cast<std::uint8_t>((session.pgn >> 16) & 0xFF) };
+
+    bus_.send(cts);
+  }
+
   void start_rx_rts(const jay::frame &fr)
   {
-
     // not send to self
-    if (fr.header.source_address() != bus_.source_address()) { return; }
+    if (fr.header.pdu_specific() != bus_.source_address()) { return; }
 
     TpSession s;
     s.dir = TpSession::Direction::Rx;
     s.length = fr.payload[1] | (fr.payload[2] << 8);
     s.total_packets = fr.payload[3];
-    s.dest_sa = fr.header.pdu_specific();
+    s.window_size = fr.payload[4];
+    s.dest_sa = fr.header.is_broadcast() ? jay::J1939_NO_ADDR : fr.header.pdu_specific();
     s.src_sa = fr.header.source_address();
     s.pgn = get_payload_pgn(fr);
     s.buffer.resize(s.length);
     s.last_activity = std::chrono::steady_clock::now();
+    s.next_seq = 1;
 
     auto key = make_key(s.src_sa, s.dest_sa);
     sessions_[key] = std::move(s);
-
-    // send CTS for first block of 8
-    frame cts;
-    cts.header.pgn(PGN_TP_CM);
-    cts.header.pdu_specific(fr.header.source_address());
-    cts.payload = { to_byte(Control::CTS),
-      0x08,
-      0x01,
-      0,
-      0,// next seq 1
-      static_cast<std::uint8_t>(sessions_[key].pgn & 0xFF),
-      static_cast<std::uint8_t>((sessions_[key].pgn >> 8) & 0xFF),
-      static_cast<std::uint8_t>((sessions_[key].pgn >> 16) & 0xFF) };
-
-    bus_.send(cts);
+    response_cts(sessions_[key]);
   }
 
   void handle_cts(const jay::frame &fr)
@@ -331,8 +355,8 @@ private:
     std::size_t offset = (seq - 1) * 7;
     auto avail = std::min<std::size_t>(7, session.buffer.size() - offset);
     std::copy_n(fr.payload.data() + 1, avail, session.buffer.data() + offset);
-    if (seq == session.total_packets) {
 
+    if (seq == session.total_packets) {
       // finished, deliver
       if (rx_callback_) {
         frame_header hr;
@@ -343,9 +367,12 @@ private:
         rx_callback_({ hr, session.buffer });
       }
 
-      sessions_.erase(it);
       // send EOM_ACK if not BAM
       if (!session.bam) send_eom_ack(session);
+
+      sessions_.erase(it);
+    } else if (seq % session.window_size == 0 && !session.bam) {
+      response_cts(session);
     }
   }
 

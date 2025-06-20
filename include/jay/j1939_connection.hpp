@@ -68,7 +68,7 @@ public:
    */
   j1939_connection(boost::asio::io_context &io, std::shared_ptr<jay::network> net)
     : socket_(boost::asio::make_strand(io)), network_(std::move(net)), strand_(socket_.get_executor()),
-      bus_(std::make_unique<bus_adapter>(strand_, [this](const jay::frame &fr) { return this->send(fr); })),
+      bus_(std::make_unique<bus_adapter>(strand_, [this](const jay::frame &fr) { return this->send_raw(fr); })),
       tp_(std::make_unique<transport_protocol>(*bus_))
   {}
 
@@ -85,7 +85,7 @@ public:
     std::optional<jay::name> local_name,
     std::optional<jay::name> target_name)
     : socket_(boost::asio::make_strand(io)), network_(std::move(net)), strand_(socket_.get_executor()),
-      bus_(std::make_unique<bus_adapter>(strand_, [this](const jay::frame &fr) { return this->send(fr); })),
+      bus_(std::make_unique<bus_adapter>(strand_, [this](const jay::frame &fr) { return this->send_raw(fr); })),
       tp_(std::make_unique<transport_protocol>(*bus_)), local_name_(local_name), target_name_(target_name)
   {}
 
@@ -254,8 +254,8 @@ public:
     if (j1939_frame.header.is_broadcast()) {
       auto source_address = network_->get_address(*local_name_);
       if (source_address == J1939_IDLE_ADDR) {
-        on_error_(
-          "Socket has no source address", boost::system::errc::make_error_code(boost::system::errc::invalid_argument));
+        on_error_("connection has no source address",
+          boost::system::errc::make_error_code(boost::system::errc::invalid_argument));
         return false;
       }
 
@@ -265,7 +265,7 @@ public:
     } else {
       if (!target_name_.has_value()) {
         on_error_(
-          "Socket has no connection name", boost::system::errc::make_error_code(boost::system::errc::invalid_argument));
+          "connection has no target name", boost::system::errc::make_error_code(boost::system::errc::invalid_argument));
         return false;
       }
 
@@ -292,8 +292,8 @@ public:
 
     auto source_address = network_->get_address(*local_name_);
     if (source_address == J1939_IDLE_ADDR) {
-      on_error_(
-        "Socket has no source address", boost::system::errc::make_error_code(boost::system::errc::invalid_argument));
+      on_error_("connection has no source address",
+        boost::system::errc::make_error_code(boost::system::errc::invalid_argument));
       return false;
     }
 
@@ -382,6 +382,8 @@ private:
   {
     /// If we dont have any names then accept any frame
     if (!target_name_ && !local_name_) { return true; }
+
+    if (local_name_) { bus_->source_address(network_->get_address(*local_name_)); }
 
     // We can accept broadcasts from target is there is one
     if (buffer_.header.is_broadcast()) {
