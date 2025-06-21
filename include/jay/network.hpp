@@ -56,7 +56,7 @@ public:
   std::set<jay::name> get_name_set()
   {
     std::shared_lock lock{ network_mtx_ };
-    std::set<jay::name> set{ name_addr_map_.size() };
+    std::set<jay::name> set{};
     for (auto &pair : name_addr_map_) { set.insert(pair.first); }
     return set;
   }
