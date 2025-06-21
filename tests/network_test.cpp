@@ -146,3 +146,16 @@ TEST(Jay_Network_Test, Jay_Network_Search_Test)
   ASSERT_EQ(j1939_network.find_address(0, 0, true), 0);
   ASSERT_EQ(j1939_network.find_address(controller, 0, true), address + 1);
 }
+
+TEST(Jay_Network_Test, Jay_Network_Get_Name_Set_Test)
+{
+  jay::network j1939_network{ "vcan0" };
+  std::vector<jay::name> names{ jay::name{ 0x1U }, jay::name{ 0x2U }, jay::name{ 0x3U } };
+
+  uint8_t address = 0x80;
+  for (auto n : names) { j1939_network.insert(n, address++); }
+
+  auto name_set = j1939_network.get_name_set();
+  ASSERT_EQ(name_set.size(), names.size());
+  for (auto n : names) { ASSERT_TRUE(name_set.count(n)); }
+}
