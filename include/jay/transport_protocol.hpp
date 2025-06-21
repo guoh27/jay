@@ -197,7 +197,7 @@ private:
   {
     while (s.next_seq <= s.total_packets && count--) {
       frame fr;
-      fr.header.pgn(PGN_TP_CM);
+      fr.header.pgn(PGN_TP_DT);
       fr.header.pdu_specific(s.dest_sa);
       fr.header.source_address(s.src_sa);
       fr.header.payload_length(8);

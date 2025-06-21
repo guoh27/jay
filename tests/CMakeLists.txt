@@ -26,6 +26,7 @@ add_executable(${TEST_EXECUTABLE_NAME} main.cpp
     network_test.cpp
     network_manager_test.cpp
     name_test.cpp
+    transport_protocol_test.cpp
 )
 
 #
