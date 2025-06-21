@@ -41,6 +41,7 @@ option(JAY_BUILD_DOCS "Build jay documentation." OFF)
 # ============================================================================================
 
 
+include(FindPkgConfig)
 #Fing Canary
 if(NOT TARGET canary::canary)
   find_package(canary QUIET)
