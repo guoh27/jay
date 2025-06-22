@@ -13,9 +13,11 @@
 
 #include <array>
 #include <chrono>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
+#include <boost/asio.hpp>
 #include <boost/functional/hash.hpp>
 
 // local
@@ -46,10 +48,55 @@ public:
 constexpr std::uint32_t PGN_TP_CM = 0x00EC00;// 60416
 constexpr std::uint32_t PGN_TP_DT = 0x00EB00;// 60160
 
+// J1939 TP timeout defaults
+constexpr auto T1 = std::chrono::milliseconds(750);// RTS/CTS handshake
+constexpr auto T2 = std::chrono::milliseconds(1250);// Between CTS and first DT
+constexpr auto T3 = std::chrono::milliseconds(1250);// End of message ACK wait
+constexpr auto Tr = std::chrono::milliseconds(200);// Minimum separation time
+
 // ──────────────────────────────────────────────────
 // TP Control Bytes (first byte of TP.CM payload)
 // ──────────────────────────────────────────────────
 enum class Control : std::uint8_t { RTS = 0x10, CTS = 0x11, EOM = 0x13, BAM = 0x20, ABORT = 0xFF };
+
+enum class AbortCode : std::uint8_t {
+  AlreadyInSession = 1,
+  ResourcesBusy = 2,
+  Timeout = 3,
+  CtsWhileDT = 4,
+  MaxRetransmit = 5,
+  UnexpectedPacket = 6,
+  BadSequence = 7,
+  DuplicateSeq = 8,
+  LengthExceeded = 9,
+  Unspecified = 250
+};
+
+inline std::string to_string(AbortCode code)
+{
+  switch (code) {
+  case AbortCode::AlreadyInSession:
+    return "already in session";
+  case AbortCode::ResourcesBusy:
+    return "resources busy";
+  case AbortCode::Timeout:
+    return "timeout";
+  case AbortCode::CtsWhileDT:
+    return "cts during dt";
+  case AbortCode::MaxRetransmit:
+    return "retransmit limit";
+  case AbortCode::UnexpectedPacket:
+    return "unexpected packet";
+  case AbortCode::BadSequence:
+    return "bad sequence";
+  case AbortCode::DuplicateSeq:
+    return "duplicate seq";
+  case AbortCode::LengthExceeded:
+    return "length exceeded";
+  default:
+    return "unspecified";
+  }
+}
 
 // Little helper to cast enum ↔ byte
 inline std::uint8_t to_byte(Control c) { return static_cast<std::uint8_t>(c); }
@@ -74,19 +121,20 @@ struct TpSession
   bool bam{ false };
 
   std::chrono::steady_clock::time_point last_activity;
+  bool aborted{ false };
 };
 
 class transport_protocol : public std::enable_shared_from_this<transport_protocol>
 {
 public:
-  explicit transport_protocol(jay::bus &bus) : bus_(bus) {}
+  explicit transport_protocol(jay::bus &bus) : bus_(bus), tick_timer_(bus.strand_) {}
+
+  void set_error_handler(J1939OnError cb) { error_callback_ = std::move(cb); }
 
   // High‑level entry – send any size buffer
   bool send(const std::vector<std::uint8_t> &data, jay::address_t dest, std::uint32_t pgn)
   {
-    if (!start_tx(data, dest, pgn)) { return false; }
-    // TODO: wait session complete
-    return true;
+    return start_tx(data, dest, pgn);
   }
 
   // Feed every incoming J1939 CAN frame to this dispatcher
@@ -105,13 +153,64 @@ public:
   {
     auto now = std::chrono::steady_clock::now();
     for (auto it = sessions_.begin(); it != sessions_.end();) {
-      if (now - it->second.last_activity > std::chrono::seconds(2)) {
+      auto timeout = (it->second.dir == TpSession::Direction::Tx) ? T3 : T2;
+      if (now - it->second.last_activity > timeout) {
+        send_abort(it->second, AbortCode::Timeout);
+        report_error("tp timeout", boost::asio::error::timed_out);
         it = sessions_.erase(it);
-      } else
+      } else {
         ++it;
-
-      // TODO: process session wait timeout
+      }
     }
+  }
+
+  void start_tick(std::chrono::milliseconds period)
+  {
+    tick_timer_.expires_after(period);
+    tick_timer_.async_wait([this, period](const boost::system::error_code &ec) {
+      if (!ec) {
+        tick();
+        start_tick(period);
+      }
+    });
+  }
+
+  void report_error(const std::string &what, boost::system::error_code ec)
+  {
+    if (error_callback_) { error_callback_(what, ec); }
+  }
+
+private:
+  frame make_base_frame(const TpSession &s, pgn_t pgn, jay::address_t dst, jay::address_t src)
+  {
+    frame fr;
+    fr.header.pgn(pgn);
+    fr.header.pdu_specific(dst);
+    fr.header.source_address(src);
+    fr.header.payload_length(8);
+    fr.payload.fill(0);
+    return fr;
+  }
+
+  frame make_cm_frame(Control ctrl, const TpSession &s, jay::address_t dst_sa, jay::address_t src_sa)
+  {
+    auto fr = make_base_frame(s, PGN_TP_CM, dst_sa, src_sa);
+    fr.payload[0] = to_byte(ctrl);
+    return fr;
+  }
+
+  frame make_dt_frame(const TpSession &s) { return make_base_frame(s, PGN_TP_DT, s.dest_sa, s.src_sa); }
+
+  void fill_tp_payload(frame &fr, const TpSession &s, std::optional<std::uint8_t> first = std::nullopt)
+  {
+    if (first) fr.payload[0] = *first;
+    fr.payload[1] = s.length & 0xFF;
+    fr.payload[2] = s.length >> 8;
+    fr.payload[3] = s.total_packets;
+    fr.payload[4] = s.window_size;
+    fr.payload[5] = s.pgn & 0xFF;
+    fr.payload[6] = (s.pgn >> 8) & 0xFF;
+    fr.payload[7] = (s.pgn >> 16) & 0xFF;
   }
 
 private:
@@ -128,6 +227,10 @@ private:
   {
     // ignore
     if (data.size() <= 8) { return false; }
+    if (data.size() > 1785) {
+      report_error("payload too large", boost::asio::error::message_size);
+      return false;
+    }
 
     // multi‑packet – choose BAM if broadcast (255) else RTS/CTS
     bool use_bam = (dest == 0xFF);
@@ -153,54 +256,36 @@ private:
 
   bool send_bam_start(TpSession &s)
   {
-    frame fr;
-    fr.header.pgn(PGN_TP_CM);
-    fr.header.pdu_specific(jay::J1939_NO_ADDR);
-    fr.header.source_address(s.src_sa);
-    fr.header.payload_length(8);
-
-    fr.payload[0] = to_byte(Control::BAM);
-    fr.payload[1] = s.length & 0xFF;
-    fr.payload[2] = s.length >> 8;
-    fr.payload[3] = s.total_packets;
-    fr.payload[4] = s.window_size;//(unused for BAM)
-    fr.payload[5] = s.pgn & 0xFF;
-    fr.payload[6] = (s.pgn >> 8) & 0xFF;
-    fr.payload[7] = (s.pgn >> 16) & 0xFF;
-    if (!bus_.send(fr)) { return false; }
-
-    // TODO: BAM wait
+    frame fr = make_cm_frame(Control::BAM, s, jay::J1939_NO_ADDR, s.src_sa);
+    fill_tp_payload(fr, s);
+    if (!bus_.send(fr)) {
+      report_error("tp send BAM", boost::system::errc::make_error_code(boost::system::errc::io_error));
+      send_abort(s, AbortCode::ResourcesBusy);
+      return false;
+    }
+    s.last_activity = std::chrono::steady_clock::now();
     return send_data_packets(s);
   }
 
   bool send_rts(TpSession &s)
   {
-    frame fr;
-    fr.header.pgn(PGN_TP_CM);
-    fr.header.pdu_specific(s.dest_sa);
-    fr.header.source_address(s.src_sa);
-    fr.header.payload_length(8);
-
-    fr.payload[0] = to_byte(Control::RTS);
-    fr.payload[1] = s.length & 0xFF;
-    fr.payload[2] = s.length >> 8;
-    fr.payload[3] = s.total_packets;
-    fr.payload[4] = s.window_size;
-    fr.payload[5] = s.pgn & 0xFF;
-    fr.payload[6] = (s.pgn >> 8) & 0xFF;
-    fr.payload[7] = (s.pgn >> 16) & 0xFF;
-    return bus_.send(fr);
+    frame fr = make_cm_frame(Control::RTS, s, s.dest_sa, s.src_sa);
+    fill_tp_payload(fr, s);
+    auto ok = bus_.send(fr);
+    if (!ok) {
+      report_error("tp send RTS", boost::system::errc::make_error_code(boost::system::errc::io_error));
+      send_abort(s, AbortCode::ResourcesBusy);
+      return false;
+    }
+    s.last_activity = std::chrono::steady_clock::now();
+    return true;
     // wait for CTS before sending data
   }
 
   bool send_data_packets(TpSession &s, std::uint8_t count = 0xFF)
   {
     while (s.next_seq <= s.total_packets && count--) {
-      frame fr;
-      fr.header.pgn(PGN_TP_DT);
-      fr.header.pdu_specific(s.dest_sa);
-      fr.header.source_address(s.src_sa);
-      fr.header.payload_length(8);
+      frame fr = make_dt_frame(s);
 
       fr.payload[0] = s.next_seq;
       std::size_t offset = (s.next_seq - 1) * 7;
@@ -208,10 +293,12 @@ private:
       std::copy_n(s.buffer.data() + offset, avail, fr.payload.begin() + 1);
 
       if (!bus_.send(fr)) {
-        // TODO: wait
+        report_error("tp send DT", boost::system::errc::make_error_code(boost::system::errc::io_error));
+        send_abort(s, AbortCode::ResourcesBusy);
         return false;
       }
 
+      s.last_activity = std::chrono::steady_clock::now();
       ++s.next_seq;
     }
 
@@ -230,21 +317,22 @@ private:
   {
     if (s.bam) return true;// not required
 
-    frame fr;
-    fr.header.pgn(PGN_TP_CM);
-    // opposite direction
-    fr.header.pdu_specific(s.src_sa);
-    fr.header.source_address(s.dest_sa);
-    fr.header.payload_length(8);
-
-    fr.payload[0] = to_byte(Control::EOM);
-    fr.payload[1] = s.length & 0xFF;
-    fr.payload[2] = s.length >> 8;
-    fr.payload[3] = s.total_packets;
+    frame fr = make_cm_frame(Control::EOM, s, s.src_sa, s.dest_sa);
+    fill_tp_payload(fr, s);
     fr.payload[4] = 0xFF;// seq
-    fr.payload[5] = s.pgn & 0xFF;
-    fr.payload[6] = (s.pgn >> 8) & 0xFF;
-    fr.payload[7] = (s.pgn >> 16) & 0xFF;
+    if (!bus_.send(fr)) {
+      report_error("tp send EOM", boost::system::errc::make_error_code(boost::system::errc::io_error));
+      return false;
+    }
+    return true;
+  }
+
+  bool send_abort(const TpSession &s, AbortCode code)
+  {
+    frame fr = make_cm_frame(Control::ABORT, s, s.src_sa, s.dest_sa);
+    fill_tp_payload(fr, s);
+    fr.payload[1] = static_cast<std::uint8_t>(code);
+    fr.payload[2] = fr.payload[3] = fr.payload[4] = 0;
     return bus_.send(fr);
   }
 
@@ -266,7 +354,7 @@ private:
       complete_rx(fr);
       break;
     case Control::ABORT:
-      // TODO: process abort
+      handle_abort(fr);
       break;
     default: /* ignore */
       break;
@@ -276,21 +364,12 @@ private:
   void response_cts(const TpSession &session)
   {
     // send CTS
-    frame cts;
-    cts.header.pgn(PGN_TP_CM);
-    // opposite direction
-    cts.header.pdu_specific(session.src_sa);
-    cts.header.source_address(session.dest_sa);
-    cts.header.payload_length(8);
-
-    cts.payload = { to_byte(Control::CTS),
-      session.window_size,
-      session.next_seq,
-      0,// reserved 2 bytes
-      0,
-      static_cast<std::uint8_t>(session.pgn & 0xFF),
-      static_cast<std::uint8_t>((session.pgn >> 8) & 0xFF),
-      static_cast<std::uint8_t>((session.pgn >> 16) & 0xFF) };
+    frame cts = make_cm_frame(Control::CTS, session, session.src_sa, session.dest_sa);
+    fill_tp_payload(cts, session);
+    cts.payload[1] = session.window_size;
+    cts.payload[2] = session.next_seq;
+    cts.payload[3] = 0;
+    cts.payload[4] = 0;
 
     bus_.send(cts);
   }
@@ -355,6 +434,7 @@ private:
     std::size_t offset = (seq - 1) * 7;
     auto avail = std::min<std::size_t>(7, session.buffer.size() - offset);
     std::copy_n(fr.payload.data() + 1, avail, session.buffer.data() + offset);
+    session.last_activity = std::chrono::steady_clock::now();
 
     if (seq == session.total_packets) {
       // finished, deliver
@@ -376,6 +456,17 @@ private:
     }
   }
 
+  void handle_abort(const jay::frame &fr)
+  {
+    auto key = make_key(bus_.source_address(), fr.header.source_address());
+    if (auto it = sessions_.find(key); it != sessions_.end()) {
+      it->second.aborted = true;
+      sessions_.erase(it);
+      auto reason = static_cast<AbortCode>(fr.payload[1]);
+      report_error("remote abort: " + to_string(reason), boost::asio::error::operation_aborted);
+    }
+  }
+
   void complete_rx(const jay::frame & /*fr*/)
   {
     // nothing – handled in DT loop
@@ -389,5 +480,7 @@ public:
 private:
   jay::bus &bus_;
   J1939OnData rx_callback_;
+  J1939OnError error_callback_;
+  boost::asio::steady_timer tick_timer_;
 };
 }// namespace jay
