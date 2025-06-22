@@ -9,480 +9,244 @@
 #pragma once
 
 // C++
-#include <functional>
+#include <cstdlib>//rand
+#include <random>//std::mt19937, std::uniform_int_distribution
+#include <string>//std::string
 
 // Lib
-#include "boost/sml.hpp"
+#include "boost/asio/deadline_timer.hpp"//boost::asio::deadline_timer
+#include "boost/asio/io_context.hpp"//boost::asio::io_context
+#include "boost/asio/post.hpp"//boost::asio::post
 
 // Local
-#include "frame.hpp"
-#include "name.hpp"
 #include "network.hpp"
-
+#include "address_state_machine.hpp"
+#include "j1939_type.hpp"
 
 namespace jay {
 
 /**
- * @brief boost::sml state machine class for dynamic j1939 address claiming
- * @note Each state machine is responsible for only one name address pair
- * @note The state machine does not (cant?) manage delays / timeouts internally
+ * @brief Wrapper class for sml state machine that implements timeout events
+ * as i have not found a way to implement timeouts internally in address claimer
  */
-class address_claimer
+class address_manager
 {
 public:
-  using self = address_claimer;
-
-  /**
-   * @brief Callbacks for generating outputs
-   * @todo remove name from callbacks as its probably not needed?
-   */
-  struct callbacks
-  {
-    std::function<void(jay::name, std::uint8_t)> on_address;
-    std::function<void(jay::name)> on_lose_address;
-    std::function<void()> on_begin_claiming;
-    std::function<void(jay::name, std::uint8_t)> on_address_claim;
-    std::function<void()> on_request;
-    std::function<void(jay::name)> on_cannot_claim;
-  };
-
   /**
    * @brief Constructor
-   * @param name to get an address for
+   * @param context from boost asio
+   * @param context name to claim address for
+   * @param network containing name address pairs
+   * @note remember to add callbacks for getting data out of object
    */
-  explicit address_claimer(name name) : name_(name), callbacks_() {}
-
-  /**
-   * @brief Constructor
-   * @param name to get an address for
-   * @param callbacks
-   */
-  address_claimer(name name, callbacks &&callbacks) : name_(name), callbacks_(std::move(callbacks))
+  address_manager(boost::asio::io_context &context, jay::name name, std::shared_ptr<jay::network> network)
+    : context_(context), network_(network), addr_claimer_(name), claim_state_(), has_address_state_(),
+      state_machine_(addr_claimer_,
+        *network_,
+        claim_state_,
+        has_address_state_,
+        jay::address_claimer::ev_start_claim{}),
+      timeout_timer_(context_)
   {
-    assert(callbacks_.on_address);
-    assert(callbacks_.on_lose_address);
-    assert(callbacks_.on_begin_claiming);
-    assert(callbacks_.on_address_claim);
-    assert(callbacks_.on_request);
-    assert(callbacks_.on_cannot_claim);
+    addr_claimer_.set_callbacks(
+      jay::address_claimer::callbacks{ [this](auto name, auto address) -> void { on_address(name, address); },
+        [this](auto name) -> void { on_address_loss(name); },
+        [this]() -> void { on_begin_claiming(); },
+        [this](auto name, auto address) -> void { on_address_claim(name, address); },
+        [this]() { on_address_request(); },
+        [this](auto name) -> void { on_cannot_claim(name); } });
   }
 
   /**
-   * @brief Set callbacks
-   * @param callbacks
+   * @brief Set the callbacks for address manager
+   * @param callbacks to set
    */
-  void set_callbacks(callbacks &&callbacks) { callbacks_ = std::move(callbacks); }
+  void on_address_claimed(std::function<void(jay::name, std::uint8_t)> on_address)
+  {
+    on_address_ = std::move(on_address);
+  }
 
   /**
-   * @brief get the name that we are claiming and address for
-   * @return name
+   * @brief Set the on lose address callback
+   * @param on_lose_address callback to call when an address is lost
    */
-  jay::name get_name() const noexcept { return name_; }
-
-  //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
-  //@                             States                             @//
-  //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
+  void on_address_lost(std::function<void(jay::name)> on_lose_address)
+  {
+    on_lose_address_ = std::move(on_lose_address);
+  }
 
   /**
-   * @brief Starting state of the state machine, In this state the name has no address
+   * @brief Set the on frame callback
+   * @param on_frame callback to call when a frame is ready to be sent
    */
-  struct st_no_address
-  {
-  };
+  void on_frame(J1939OnFrame on_frame) { on_frame_ = std::move(on_frame); }
 
   /**
-   * @brief In this state the name is in the process of claiming and address
+   * @brief Set the on error callback
+   * @param on_error callback to call when an error occurs
    */
-  struct st_claiming
-  {
-    std::uint8_t address{ J1939_NO_ADDR };
-  };
+  void on_error(J1939OnError on_error) { on_error_ = std::move(on_error); }
+
 
   /**
-   * @brief In this state the name has an address
+   * @brief Get the name object
+   * @return jay::name
    */
-  struct st_has_address
-  {
-    std::uint8_t address{ J1939_NO_ADDR };
-  };
-
-  struct st_address_lost
-  {
-  };
-
-  //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
-  //@                                 Events                         @//
-  //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
+  jay::name get_name() const noexcept { return addr_claimer_.get_name(); }
 
   /**
-   * @brief Event used to start the address claiming process
+   * @brief Start the address claiming process
+   * @param preferred_address to claim
+   * @note event is posted to context
    */
-  struct ev_start_claim
+  void start_address_claim(std::uint8_t preferred_address)
   {
-    std::uint8_t pref_address{};
-  };
+    if (!state_machine_.is(boost::sml::state<jay::address_claimer::st_no_address>)) { return; }
+
+    boost::asio::post(context_, [this, preferred_address]() -> void {
+      state_machine_.process_event(jay::address_claimer::ev_start_claim{ preferred_address });
+    });
+  }
 
   /**
-   * @brief Event used when receiving an address claim from another controller/device
+   * @brief processes to address request event in state machine
+   * @param request event
+   * @note event is posted tp context
    */
-  struct ev_address_claim
+  void address_request(jay::address_claimer::ev_address_request request)
   {
-    std::uint64_t name{};
-    std::uint8_t address{};
-  };
+    boost::asio::post(context_, [this, request]() -> void { state_machine_.process_event(request); });
+  }
 
   /**
-   * @brief Event used when another controller/device is requesting our address
+   * @brief processes an address claim event in state machine
+   * @param claim event
+   * @note event is posted tp context
    */
-  struct ev_address_request
+  void address_claim(jay::address_claimer::ev_address_claim claim)
   {
-  };
-
-  /**
-   * @brief Event used when time has run out for address claiming
-   */
-  struct ev_timeout
-  {
-  };
-
-  struct ev_random_retry
-  {
-  };
+    boost::asio::post(context_, [this, claim]() -> void { state_machine_.process_event(claim); });
+  }
 
 private:
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
-  //@                             Guards                             @//
+  //@                   Address claimer callbacks                    @//
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
 
-  ///
-
   /**
-   * @brief Checks if no addresses are available to claim
-   * @param network to check for available addresses
+   * @brief Callbacks for when a state machine has acquired an address
+   *
+   * @param name of controller in state machine
+   * @param address claimed by state machine
    */
-  bool no_address_available(const network &network) const { return network.full(); }
-
-  /**
-   * @brief Checks if addresses are available to claim
-   * @param network to check for available addresses
-   */
-  bool address_available(const network &network) const { return !network.full(); }
-
-  /**
-   * @brief Check if our name has priority
-   * @param name to check local name against
-   * @return false if local name is larger
-   * @return true if local name is less
-   */
-  bool address_priority(jay::name name) const { return name_ < name; }
-
-  /**
-   * @brief Checks if addresses conflict
-   * @param l_address
-   * @param r_address
-   * @return false if addresses are not the same
-   * @return true if addresses are the same
-   */
-  bool address_conflict(std::uint8_t l_address, std::uint8_t r_address) const { return l_address == r_address; }
-
-  /**
-   * @brief Checks if addresses change is required
-   * @param name to check local name again
-   * @param l_address address associated with name
-   * @param r_address local address
-   * @return false if addresses does not conflict or if local name has priority
-   * @return true if addresses conflict and local name does not have priority
-   */
-  bool address_change_required(jay::name name, std::uint8_t l_address, std::uint8_t r_address) const
+  void on_address(jay::name name, std::uint8_t address)
   {
-    return address_conflict(l_address, r_address) && !address_priority(name);
-  }
-
-  bool retry_allowed(const network &net) const { return name_.self_config_address() && address_available(net); }
-
-  bool retry_disallowed(const network &net) const { return !name_.self_config_address() || !address_available(net); }
-
-  /// State specific guards
-
-  /**
-   * @brief Check if claiming state has priority over address claim
-   * @param claiming state
-   * @param address_claim event
-   * @return false if addresses dont conflict or local name does not have priority
-   * @return true if addresses conflict and local name has priority
-   */
-  bool claiming_priority(st_claiming &claiming, const ev_address_claim &address_claim) const
-  {
-    return address_conflict(claiming.address, address_claim.address) && address_priority(address_claim.name);
+    network_->insert(name, address);
+    if (on_address_) { on_address_(name, address); }
   }
 
   /**
-   * @brief Check if claiming state has priority over address claim event and that
-   * new addresses are available
-   * @param claiming state
-   * @param address_claim event
-   * @param network of name address pairs
-   * @return false if address change not required or no addresses are available
-   * @return true if address change is required and addresses are available
+   * @brief Callbacks for when a state machine has lost their address
+   *
+   * @param name of controller in state machine
    */
-  bool claiming_loss(st_claiming &claiming, const ev_address_claim &address_claim, const network &network) const
+  void on_address_loss(jay::name name)
   {
-    return address_change_required(address_claim.name, address_claim.address, claiming.address)
-           && address_available(network);
+    network_->release(name);
+    if (on_lose_address_) { on_lose_address_(name); }
   }
 
   /**
-   * @brief Check if claiming state loses priority over address claim event and
-   * if there are no available addresses
-   * @param claiming state
-   * @param address_claim event
-   * @param network of name address pairs
-   * @return false if address change not required or addresses are available
-   * @return true if address change is required and no addresses are available
+   * @brief Callbacks for when a state machine has started claiming and address
+   *
+   * @param name of controller in state machine
    */
-  bool claiming_failure(st_claiming &claiming, const ev_address_claim &address_claim, const network &network)
+  void on_begin_claiming()
   {
-    return address_change_required(address_claim.name, address_claim.address, claiming.address)
-           && no_address_available(network);
+    /// TODO: Note CAs between 0 - 127 and 248 253 may omit 250ms delay
+    timeout_timer_.expires_from_now(boost::posix_time::millisec(250));
+    timeout_timer_.async_wait([this](auto error_code) {
+      if (error_code) { return on_fail("on_claim_timeout", error_code); }
+      state_machine_.process_event(jay::address_claimer::ev_timeout{});
+    });
   }
 
   /**
-   * @brief Check if claimed state has priority over address claim event
-   * @param has_address state
-   * @param address_claim event
-   * @return false if addresses dont conflict or local name does not have priority
-   * @return true if addresses conflict and local name has priority
-   */
-  bool claimed_priority(st_has_address &has_address, const ev_address_claim &address_claim) const
-  {
-    return address_conflict(has_address.address, address_claim.address) && address_priority(address_claim.name);
-  }
-
-  /**
-   * @brief Check if claimed state has priority over address claim event and that
-   * new addresses are available
-   * @param has_address state
-   * @param address_claim event
-   * @param network
-   * @return false if address change not required or no addresses are available
-   * @return true if address change is required and addresses are available
-   */
-  bool claimed_loss(st_has_address &has_address, const ev_address_claim &address_claim, const network &network) const
-  {
-    return address_change_required(address_claim.name, address_claim.address, has_address.address)
-           && address_available(network);
-  }
-
-  /**
-   * @brief Check if claimed state loses priority over address claim event and
-   * if there are no available addresses
-   * @param has_address state
-   * @param address_claim event
-   * @param network
-   * @return false if address change not required or addresses are available
-   * @return true if address change is required and no addresses are available
-   */
-  bool claimed_failure(st_has_address &has_address, const ev_address_claim &address_claim, const network &network) const
-  {
-    return address_change_required(address_claim.name, address_claim.address, has_address.address)
-           && no_address_available(network);
-  }
-
-  /**
-   * @brief Check if the claiming address is available in network
-   * @param claiming state
-   * @param network of name address pairs
-   * @return false if claiming address is not available in network and name
-   * does not have an address in the network
-   * @return true if claiming address is available in network or name
-   * already has an address in the network
-   * @todo add boolean for taking address or not? replace claimable with available?
-   */
-  bool valid_address(st_claiming &claiming, const network &network) const
-  {
-    return network.claimable(claiming.address, name_) || network.get_address(name_) < J1939_IDLE_ADDR;
-  }
-
-  /**
-   * @brief Check if that claiming address is not available in network
-   * @param claiming state
-   * @param network of name address pairs
-   * @return false if claiming address is available in network or name
-   * already has an address in the network
-   * @return true if claiming address is not available in network and and name
-   * does not have an address in the network
-   * @todo add boolean for taking address or not? replace claimable with available?
-   */
-  bool no_valid_address(st_claiming &claiming, const network &network) const
-  {
-    return !network.claimable(claiming.address, name_) && network.get_address(name_) == J1939_IDLE_ADDR;
-  }
-
-  //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
-  //@                             Actions                            @//
-  //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
-
-  /// Data transfree actions
-
-  /**
-   * @brief Set preferred address when entering claiming state
-   * @param claiming state
-   * @param ev_st_claim event, contains preferred address
-   */
-  void set_pref_address(st_claiming &claiming, const ev_start_claim &ev_st_claim)
-  {
-    claiming.address = ev_st_claim.pref_address;
-  }
-
-  /**
-   * @brief Set claimed address from claiming state to has_address state
-   * @param src - claiming state
-   * @param dst - has_address state
-   */
-  void set_claimed_address(st_claiming &src, st_has_address &dst) { dst.address = src.address; }
-
-  /**
-   * @brief Set claimed address from claiming state to has_address state
-   * @param src - claiming state
-   * @param dst - has_address state
-   */
-  void set_claiming_address(st_has_address &src, st_claiming &dst) { dst.address = src.address; }
-
-  /// Output actions
-
-  /**
-   * @brief Sends an address claim to on frame callback
+   * @brief Callbacks for when a state machine needs to send address claiming frames
+   *
+   * @param name of controller in state machine
    * @param address to claim
    */
-  void send_address_claim(std::uint8_t address) const
+  void on_address_claim(jay::name name, std::uint8_t address)
   {
-    if (callbacks_.on_address_claim) { callbacks_.on_address_claim(name_, address); }
+    if (on_frame_) on_frame_(jay::frame::make_address_claim(name, address));
+  }
+
+  void on_address_request()
+  {
+    if (on_frame_) on_frame_(jay::frame::make_address_request());
   }
 
   /**
-   * @brief Sends an address request to on frame callback
+   * @brief Callbacks for when a state machine needs to send cannot claim address frames
+   * @param name of controller in state machine
+   */
+  void on_cannot_claim(jay::name name)
+  {
+    static thread_local std::mt19937 rng{ std::random_device{}() };
+    std::uniform_int_distribution<int> dist(0, 150);
+    auto rand_delay = dist(rng);// Add a random 0 - 150 ms delay
+    timeout_timer_.expires_from_now(boost::posix_time::millisec(rand_delay));
+    timeout_timer_.async_wait([name, this](auto error_code) {
+      if (error_code) { return on_fail("on_claim_timeout", error_code); }
+      if (on_frame_) on_frame_(jay::frame::make_cannot_claim(static_cast<jay::payload>(name)));
+
+      if (name.self_config_address()) {
+        boost::asio::post(
+          context_, [this]() { state_machine_.process_event(jay::address_claimer::ev_random_retry{}); });
+      }
+    });
+  }
+
+  /**
+   * @brief Checks the for ignorable errors. Errors cant be ignored
+   * the error code is sent to the on_error_ callback
    *
+   * @param what - function name the error happened in
+   * @param error_code - containing information regarding the error
    */
-  void send_request() const
+  void on_fail(char const *what, boost::system::error_code error_code)
   {
-    if (callbacks_.on_request) { callbacks_.on_request(); }
+    // Don't report these
+    if (error_code == boost::asio::error::operation_aborted) { return; }
+    if (on_error_) { on_error_(what, error_code); }
   }
 
-  /**
-   * @brief Find an address and send address claim
-   * @param claiming state
-   * @param network of name address pairs
-   */
-  void begin_claiming_address(st_claiming &claiming, const network &network) const
-  {
-    if (callbacks_.on_begin_claiming) { callbacks_.on_begin_claiming(); }
-    claiming.address = network.find_address(name_, claiming.address, false);
-    claim_address(claiming, network);
-  }
-
-  /**
-   * @brief Find an address and send address claim
-   * @param claiming state
-   * @param network of name address pairs
-   */
-  void claim_address(st_claiming &claiming, const network &network) const
-  {
-    claiming.address = network.find_address(name_, claiming.address, false);
-    send_address_claim(claiming.address);
-  }
-
-  /**
-   * @brief Send address claim with address from claiming state
-   * @param claiming state
-   */
-  void send_claiming(st_claiming &claiming) const { send_address_claim(claiming.address); }
-
-  /**
-   * @brief Send address claim with address from has_address state
-   * @param has_address state
-   */
-  void send_claimed(st_has_address &has_address) const { send_address_claim(has_address.address); }
-
-  /**
-   * @brief send cannot claim address message
-   * @note Requires a random 0 - 153 ms delay to prevent bus errors
-   */
-  void send_cannot_claim() const
-  {
-    if (callbacks_.on_cannot_claim) { callbacks_.on_cannot_claim(name_); }
-  }
-
-  /**
-   * @brief Notify though callback which address has been claimed
-   * @param has_address state
-   */
-  void notify_address_gain(st_has_address &has_address)
-  {
-    if (callbacks_.on_address) { callbacks_.on_address(name_, has_address.address); }
-  };
-
-  /**
-   * @brief Notify though callback that address has been lost
-   */
-  void notify_address_loss()
-  {
-    if (callbacks_.on_lose_address) { callbacks_.on_lose_address(name_); }
-  };
-
-  //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
-  //@                       Transition table                         @//
-  //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
-
-public:
-  /**
-   * Creates transition table
-   */
-  auto operator()() const
-  {
-    using namespace boost::sml;
-    return make_transition_table(
-      // No Address
-      *state<st_no_address> + on_entry<_> / &self::send_request,
-      state<st_no_address> + event<ev_address_request> / &self::send_cannot_claim,
-      state<st_no_address> + event<ev_start_claim>[&self::address_available] / &self::set_pref_address =
-        state<st_claiming>,
-      state<st_no_address> + event<ev_start_claim>[&self::no_address_available] / &self::send_cannot_claim,
-
-      // Claiming
-      state<st_claiming> + on_entry<_> / &self::begin_claiming_address,
-      state<st_claiming> + event<ev_address_request> / &self::send_claiming,
-      state<st_claiming> + event<ev_address_claim>[&self::claiming_priority] / &self::send_claiming,
-      state<st_claiming> + event<ev_address_claim>[&self::claiming_loss] / &self::begin_claiming_address,
-      state<st_claiming> + event<ev_address_claim>[&self::claiming_failure] = state<st_address_lost>,
-      state<st_claiming> + event<ev_timeout>[&self::valid_address] / &self::set_claimed_address = state<st_has_address>,
-      state<st_claiming> + event<ev_timeout>[&self::no_valid_address] = state<st_no_address>,
-
-      // Has Address
-      state<st_has_address> + on_entry<_> / &self::notify_address_gain,
-      state<st_has_address> + event<ev_address_request> / &self::send_claimed,
-      state<st_has_address> + event<ev_address_claim>[&self::claimed_priority] / &self::send_claimed,
-      state<st_has_address> + event<ev_address_claim>[&self::claimed_loss] / &self::set_claiming_address =
-        state<st_claiming>,
-      state<st_has_address> + event<ev_address_claim>[&self::claimed_failure] = state<st_address_lost>,
-      state<st_has_address> + boost::sml::on_exit<_> / &self::notify_address_loss,
-
-      // Address Lost
-      state<st_address_lost> + on_entry<_> / &self::send_cannot_claim,
-      state<st_address_lost> + event<ev_address_request> / &self::send_cannot_claim,
-      state<st_address_lost> + event<ev_random_retry>[&self::retry_allowed] / &self::set_pref_address =
-        state<st_claiming>,
-      state<st_address_lost> + event<ev_random_retry>[&self::retry_disallowed] / &self::send_cannot_claim =
-        state<st_no_address>);
-  }
 
 private:
-  // Global state data
+  /// TODO: Instead of using timeout could use tick?
 
-  // Name of the device whom we are claiming an address for
-  const name name_{};
+  // Injected
+  boost::asio::io_context &context_;
+  std::shared_ptr<jay::network> network_;
 
-  // Callbacks for notifying users of state machine
-  callbacks callbacks_;
+  // Internal
+
+  jay::address_claimer addr_claimer_;
+  jay::address_claimer::st_claiming claim_state_;
+  jay::address_claimer::st_has_address has_address_state_;
+  boost::sml::sm<jay::address_claimer> state_machine_;
+  boost::asio::deadline_timer timeout_timer_;
+
+  // Called when a local controller has claimed an address
+  std::function<void(jay::name, std::uint8_t)> on_address_;
+  // Called when a local controller loses their claimed an address
+  std::function<void(jay::name)> on_lose_address_;
+  // Called when a claim frame or cannot claim frame needs to be sent
+  J1939OnFrame on_frame_;
+  // Called when an internal error occurs, used for debugging
+  J1939OnError on_error_;
 };
+
 
 }// namespace jay

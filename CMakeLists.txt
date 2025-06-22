@@ -33,7 +33,7 @@ option(THREADS_PREFER_PTHREAD_FLAG "Prefere pthread threads" ON)
 
 
 option(JAY_BUILD_TESTING "Build jay tests." ON)
-option(JAY_BUILD_EXAMPLES "Build examples." ON)
+option(JAY_BUILD_EXAMPLES "Build examples." OFF)
 option(JAY_BUILD_DOCS "Build jay documentation." OFF)
 
 # ============================================================================================

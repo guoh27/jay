@@ -9,7 +9,8 @@
 
 #include <gtest/gtest.h>
 
-#include "jay/address_claimer.hpp"
+#include "jay/network.hpp"
+#include "jay/address_state_machine.hpp"
 
 // C++
 #include <queue>
