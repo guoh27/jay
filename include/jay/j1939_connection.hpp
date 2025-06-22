@@ -70,7 +70,9 @@ public:
     : socket_(boost::asio::make_strand(io)), network_(std::move(net)), strand_(socket_.get_executor()),
       bus_(std::make_unique<bus_adapter>(strand_, [this](const jay::frame &fr) { return this->send_raw(fr); })),
       tp_(std::make_unique<transport_protocol>(*bus_))
-  {}
+  {
+    tp_->set_error_handler([this](const std::string &w, boost::system::error_code ec) { this->on_error(w, ec); });
+  }
 
   /**
    * @brief Construct a new J1939Connection object
@@ -87,7 +89,9 @@ public:
     : socket_(boost::asio::make_strand(io)), network_(std::move(net)), strand_(socket_.get_executor()),
       bus_(std::make_unique<bus_adapter>(strand_, [this](const jay::frame &fr) { return this->send_raw(fr); })),
       tp_(std::make_unique<transport_protocol>(*bus_)), local_name_(local_name), target_name_(target_name)
-  {}
+  {
+    tp_->set_error_handler([this](const std::string &w, boost::system::error_code ec) { this->on_error(w, ec); });
+  }
 
   /**
    * @brief Destroy the J1939Connection object
@@ -175,7 +179,13 @@ public:
    * @brief Set the OnError object
    * @param on_error callback that is called when an error occurs
    */
-  void on_error(J1939OnError on_error) { on_error_ = std::move(on_error); }
+  void on_error(J1939OnError on_error)
+  {
+    on_error_ = std::move(on_error);
+    if (tp_) {
+      tp_->set_error_handler([this](const std::string &w, boost::system::error_code ec) { this->on_error(w, ec); });
+    }
+  }
 
   void on_data(J1939OnData cb)
   {
