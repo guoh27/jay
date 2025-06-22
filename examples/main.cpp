@@ -39,7 +39,7 @@ int main()
 
   conn->on_start([](auto) { std::cout << "Listening for can messages..." << std::endl; });
   conn->on_close([](auto) { std::cout << "J1939 Connection closed" << std::endl; });
-  conn->on_read([&addr_mngr](auto frame) { addr_mngr.address_claim(jay::address_state_machine::ev_address_claim{ frame.payload, frame.header.source_address() }); });
+  conn->on_read([&addr_mngr](auto frame) { addr_mngr.process(frame); });
   conn->on_send([](auto frame) { std::cout << "Sent frame: " << frame.to_string() << std::endl; });
   conn->on_error([](auto what, auto ec) { std::cout << what << " " << ec.message() << std::endl; });
 

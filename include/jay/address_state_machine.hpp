@@ -136,6 +136,7 @@ public:
    */
   struct ev_address_request
   {
+    std::uint8_t destination_address{};
   };
 
   /**
@@ -318,6 +319,24 @@ private:
     return !network.claimable(claiming.address, name_) && network.get_address(name_) == J1939_IDLE_ADDR;
   }
 
+  bool is_global_address_req(const ev_address_request &address_request) const
+  {
+    return address_request.destination_address == J1939_NO_ADDR;
+  }
+
+  /**
+   * @brief Check if address request is valid
+   *
+   * @param has_address state
+   * @param address_request event
+   * @return true if the address request is for the address in has_address state or is a global request
+   * @return false if the address request is not for the address in has_address state and is not a global request
+   */
+  bool valid_address_request(st_has_address &has_address, const ev_address_request &address_request) const
+  {
+    return address_request.destination_address == has_address.address || is_global_address_req(address_request);
+  }
+
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
   //@                             Actions                            @//
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
@@ -443,14 +462,13 @@ public:
     return make_transition_table(
       // No Address
       *state<st_no_address> + on_entry<_> / &self::send_request,
-      state<st_no_address> + event<ev_address_request> / &self::send_cannot_claim,
+      state<st_no_address> + event<ev_address_request>[&self::is_global_address_req] / &self::send_cannot_claim,
       state<st_no_address> + event<ev_start_claim>[&self::address_available] / &self::set_pref_address =
         state<st_claiming>,
       state<st_no_address> + event<ev_start_claim>[&self::no_address_available] / &self::send_cannot_claim,
 
       // Claiming
       state<st_claiming> + on_entry<_> / &self::begin_claiming_address,
-      state<st_claiming> + event<ev_address_request> / &self::send_claiming,
       state<st_claiming> + event<ev_address_claim>[&self::claiming_priority] / &self::send_claiming,
       state<st_claiming> + event<ev_address_claim>[&self::claiming_loss] / &self::begin_claiming_address,
       state<st_claiming> + event<ev_address_claim>[&self::claiming_failure] = state<st_address_lost>,
@@ -459,7 +477,7 @@ public:
 
       // Has Address
       state<st_has_address> + on_entry<_> / &self::notify_address_gain,
-      state<st_has_address> + event<ev_address_request> / &self::send_claimed,
+      state<st_has_address> + event<ev_address_request>[&self::valid_address_request] / &self::send_claimed,
       state<st_has_address> + event<ev_address_claim>[&self::claimed_priority] / &self::send_claimed,
       state<st_has_address> + event<ev_address_claim>[&self::claimed_loss] / &self::set_claiming_address =
         state<st_claiming>,
@@ -468,7 +486,7 @@ public:
 
       // Address Lost
       state<st_address_lost> + on_entry<_> / &self::send_cannot_claim,
-      state<st_address_lost> + event<ev_address_request> / &self::send_cannot_claim,
+      state<st_address_lost> + event<ev_address_request>[&self::is_global_address_req] / &self::send_cannot_claim,
       state<st_address_lost> + event<ev_random_retry>[&self::retry_allowed] / &self::set_pref_address =
         state<st_claiming>,
       state<st_address_lost> + event<ev_random_retry>[&self::retry_disallowed] / &self::send_cannot_claim =

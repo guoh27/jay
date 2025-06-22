@@ -29,24 +29,26 @@ project(jay VERSION 0.2 DESCRIPTION "J1939 library" LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-option(THREADS_PREFER_PTHREAD_FLAG "Prefere pthread threads" ON)
+if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+  option(JAY_BUILD_TESTING "Build jay tests." ON)
+  option(JAY_BUILD_EXAMPLES "Build examples." ON)
+else()
+  option(JAY_BUILD_TESTING "Build jay tests." OFF)
+  option(JAY_BUILD_EXAMPLES "Build examples." OFF)
+endif()
 
-
-option(JAY_BUILD_TESTING "Build jay tests." ON)
-option(JAY_BUILD_EXAMPLES "Build examples." OFF)
 option(JAY_BUILD_DOCS "Build jay documentation." OFF)
 
 # ============================================================================================
 # Libraries
 # ============================================================================================
 
-
-include(FindPkgConfig)
 #Fing Canary
 if(NOT TARGET canary::canary)
   find_package(canary QUIET)
   if(NOT canary_FOUND)
-    message(STATUS "Canary not found, trying to find it in the system")
+    message(STATUS "Canary not found, trying to find it in the system by pkgconfig")
+    include(FindPkgConfig)
     pkg_check_modules(canary REQUIRED IMPORTED_TARGET canary)
   endif()
 endif()

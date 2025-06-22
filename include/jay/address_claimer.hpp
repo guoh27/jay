@@ -19,9 +19,9 @@
 #include "boost/asio/post.hpp"//boost::asio::post
 
 // Local
-#include "network.hpp"
 #include "address_state_machine.hpp"
 #include "j1939_type.hpp"
+#include "network.hpp"
 
 namespace jay {
 
@@ -95,6 +95,43 @@ public:
   jay::name get_name() const noexcept { return addr_claimer_.get_name(); }
 
   /**
+   * @brief Process a 1939 frame, containing address claim or request
+   *
+   * @param frame containing address claim or request
+   * @note frames are processed on local strand
+   */
+  void process(const jay::frame &frame)
+  {
+    if (frame.header.is_claim()) {
+      process_claim(jay::name(frame.payload), frame.header.source_address());
+    } else if (frame.header.is_request()) {
+      process_request(frame.header.source_address());
+    }
+  }
+
+  /**
+   * @brief H
+   *
+   * @param name
+   * @param destination_address
+   * @param address_claimed
+   */
+  inline void process_claim(const jay::name name, const std::uint8_t address_claimed)
+  {
+    address_claim(jay::address_state_machine::ev_address_claim{ name, address_claimed });
+  }
+
+  /**
+   * @brief
+   *
+   * @param destination_address
+   */
+  void process_request(const std::uint8_t destination_address = J1939_NO_ADDR)
+  {
+    address_request(jay::address_state_machine::ev_address_request{ destination_address });
+  }
+
+  /**
    * @brief Start the address claiming process
    * @param preferred_address to claim
    * @note event is posted to context
@@ -108,6 +145,7 @@ public:
     });
   }
 
+
   /**
    * @brief processes to address request event in state machine
    * @param request event
@@ -117,6 +155,7 @@ public:
   {
     boost::asio::post(context_, [this, request]() -> void { state_machine_.process_event(request); });
   }
+
 
   /**
    * @brief processes an address claim event in state machine
