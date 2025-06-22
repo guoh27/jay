@@ -19,12 +19,11 @@ find_package(GTest REQUIRED)
 # ============================================================================================
 
 add_executable(${TEST_EXECUTABLE_NAME} main.cpp
-    address_manager_test.cpp
+    address_claimer_test.cpp
     frame_test.cpp
     header_test.cpp
     state_machine_test.cpp
     network_test.cpp
-    network_manager_test.cpp
     name_test.cpp
     transport_protocol_test.cpp
 )

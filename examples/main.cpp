@@ -12,10 +12,9 @@
 #include "boost/asio/io_context.hpp"
 #include "boost/asio/signal_set.hpp"
 
-#include "jay/address_manager.hpp"
+#include "jay/address_claimer.hpp"
 #include "jay/j1939_connection.hpp"
 #include "jay/network.hpp"
-#include "jay/network_manager.hpp"
 
 int main()
 {
@@ -32,19 +31,18 @@ int main()
 
   auto vcan0_network = std::make_shared<jay::network>("vcan0");
   auto conn = std::make_shared<jay::j1939_connection>(io_layer, vcan0_network);
-  jay::network_manager net_mngr{ vcan0_network };
   jay::address_manager addr_mngr{ io_layer, jay::name{ 0x7758 }, vcan0_network };
 
   // ------- Connect components with callbacks ------- //
 
-  net_mngr.insert(addr_mngr);
-  net_mngr.set_callback([](jay::name name, uint8_t address) -> void {
+  vcan0_network->insert(addr_mngr);
+  vcan0_network->set_callback([](jay::name name, uint8_t address) -> void {
     std::cout << std::hex << static_cast<uint64_t>(name) << " is new, with address: " << address << std::endl;
   });
 
   conn->on_start([](auto) { std::cout << "Listening for can messages..." << std::endl; });
   conn->on_close([](auto) { std::cout << "J1939 Connection closed" << std::endl; });
-  conn->on_read([&net_mngr](auto frame) { net_mngr.process(frame); });
+  conn->on_read([vcan0_network](auto frame) { vcan0_network->process(frame); });
   conn->on_send([](auto frame) { std::cout << "Sent frame: " << frame.to_string() << std::endl; });
   conn->on_error([](auto what, auto ec) { std::cout << what << " " << ec.message() << std::endl; });
 
