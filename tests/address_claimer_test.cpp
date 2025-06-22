@@ -7,7 +7,7 @@
 // Official repository: https://github.com/guoh27/jay
 //
 
-#include "jay/address_manager.hpp"
+#include "jay/address_claimer.hpp"
 #include <gtest/gtest.h>
 
 // C++
@@ -15,11 +15,11 @@
 #include <iostream>
 #include <queue>
 
-class AddressManagerTest : public testing::Test
+class AddressClaimerTest : public testing::Test
 {
 protected:
   //
-  explicit AddressManagerTest()
+  explicit AddressClaimerTest()
   {
     j1939_network = std::make_shared<jay::network>("vcan0");
     addr_mng = new jay::address_manager(io, local_name, j1939_network);
@@ -33,7 +33,7 @@ protected:
   }
 
   //
-  ~AddressManagerTest() override { delete addr_mng; };
+  ~AddressClaimerTest() override { delete addr_mng; };
 
   //
   void SetUp() override
@@ -53,7 +53,7 @@ public:
   jay::address_manager *addr_mng{};
 };
 
-TEST_F(AddressManagerTest, Jay_Address_Manager_Test)
+TEST_F(AddressClaimerTest, Jay_Address_Claimer_Test)
 {
   std::cout << "This test will take up to a min please be patient..." << std::endl;
   ASSERT_EQ(frame_queue.size(), 0);
