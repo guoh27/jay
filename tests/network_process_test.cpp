@@ -31,15 +31,15 @@ TEST_F(NetworkProcessTest, ManualProcess)
   boost::asio::io_context ctx;
   std::queue<jay::frame> out_queue{};
 
-  jay::address_manager a1{ ctx, {0xAFFU}, network };
+  jay::address_claimer a1{ ctx, {0xAFFU}, network };
   a1.on_frame([&](jay::frame f) { out_queue.push(f); });
 
-  jay::address_manager a2{ ctx, {0xBFFU}, network };
+  jay::address_claimer a2{ ctx, {0xBFFU}, network };
   a2.on_frame([&](jay::frame f) { out_queue.push(f); });
 
   // simulate address request broadcast
-  a1.address_request(jay::address_claimer::ev_address_request{});
-  a2.address_request(jay::address_claimer::ev_address_request{});
+  a1.address_request(jay::address_state_machine::ev_address_request{});
+  a2.address_request(jay::address_state_machine::ev_address_request{});
   ctx.run_for(std::chrono::milliseconds(300));
   ctx.restart();
   ASSERT_EQ(out_queue.size(), 2);

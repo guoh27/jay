@@ -29,7 +29,7 @@ namespace jay {
  * @brief Wrapper class for sml state machine that implements timeout events
  * as i have not found a way to implement timeouts internally in address claimer
  */
-class address_manager
+class address_claimer
 {
 public:
   /**
@@ -39,17 +39,17 @@ public:
    * @param network containing name address pairs
    * @note remember to add callbacks for getting data out of object
    */
-  address_manager(boost::asio::io_context &context, jay::name name, std::shared_ptr<jay::network> network)
+  address_claimer(boost::asio::io_context &context, jay::name name, std::shared_ptr<jay::network> network)
     : context_(context), network_(network), addr_claimer_(name), claim_state_(), has_address_state_(),
       state_machine_(addr_claimer_,
         *network_,
         claim_state_,
         has_address_state_,
-        jay::address_claimer::ev_start_claim{}),
+        jay::address_state_machine::ev_start_claim{}),
       timeout_timer_(context_)
   {
     addr_claimer_.set_callbacks(
-      jay::address_claimer::callbacks{ [this](auto name, auto address) -> void { on_address(name, address); },
+      jay::address_state_machine::callbacks{ [this](auto name, auto address) -> void { on_address(name, address); },
         [this](auto name) -> void { on_address_loss(name); },
         [this]() -> void { on_begin_claiming(); },
         [this](auto name, auto address) -> void { on_address_claim(name, address); },
@@ -101,10 +101,10 @@ public:
    */
   void start_address_claim(std::uint8_t preferred_address)
   {
-    if (!state_machine_.is(boost::sml::state<jay::address_claimer::st_no_address>)) { return; }
+    if (!state_machine_.is(boost::sml::state<jay::address_state_machine::st_no_address>)) { return; }
 
     boost::asio::post(context_, [this, preferred_address]() -> void {
-      state_machine_.process_event(jay::address_claimer::ev_start_claim{ preferred_address });
+      state_machine_.process_event(jay::address_state_machine::ev_start_claim{ preferred_address });
     });
   }
 
@@ -113,7 +113,7 @@ public:
    * @param request event
    * @note event is posted tp context
    */
-  void address_request(jay::address_claimer::ev_address_request request)
+  void address_request(jay::address_state_machine::ev_address_request request)
   {
     boost::asio::post(context_, [this, request]() -> void { state_machine_.process_event(request); });
   }
@@ -123,7 +123,7 @@ public:
    * @param claim event
    * @note event is posted tp context
    */
-  void address_claim(jay::address_claimer::ev_address_claim claim)
+  void address_claim(jay::address_state_machine::ev_address_claim claim)
   {
     boost::asio::post(context_, [this, claim]() -> void { state_machine_.process_event(claim); });
   }
@@ -167,7 +167,7 @@ private:
     timeout_timer_.expires_from_now(boost::posix_time::millisec(250));
     timeout_timer_.async_wait([this](auto error_code) {
       if (error_code) { return on_fail("on_claim_timeout", error_code); }
-      state_machine_.process_event(jay::address_claimer::ev_timeout{});
+      state_machine_.process_event(jay::address_state_machine::ev_timeout{});
     });
   }
 
@@ -203,7 +203,7 @@ private:
 
       if (name.self_config_address()) {
         boost::asio::post(
-          context_, [this]() { state_machine_.process_event(jay::address_claimer::ev_random_retry{}); });
+          context_, [this]() { state_machine_.process_event(jay::address_state_machine::ev_random_retry{}); });
       }
     });
   }
@@ -232,10 +232,10 @@ private:
 
   // Internal
 
-  jay::address_claimer addr_claimer_;
-  jay::address_claimer::st_claiming claim_state_;
-  jay::address_claimer::st_has_address has_address_state_;
-  boost::sml::sm<jay::address_claimer> state_machine_;
+  jay::address_state_machine addr_claimer_;
+  jay::address_state_machine::st_claiming claim_state_;
+  jay::address_state_machine::st_has_address has_address_state_;
+  boost::sml::sm<jay::address_state_machine> state_machine_;
   boost::asio::deadline_timer timeout_timer_;
 
   // Called when a local controller has claimed an address

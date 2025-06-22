@@ -28,7 +28,7 @@ protected:
   StateMachineTest()
   {
     /// Cout used for debugging
-    addr_claimer.set_callbacks(jay::address_claimer::callbacks{ [this](jay::name name, uint8_t address) -> void {
+    addr_claimer.set_callbacks(jay::address_state_machine::callbacks{ [this](jay::name name, uint8_t address) -> void {
                                                                  // std::cout << std::hex << (name) << " gained address:
                                                                  // " << std::hex << address << std::endl;
                                                                  j1939_network.insert(name, address);
@@ -74,26 +74,26 @@ public:
   std::queue<std::pair<jay::name, std::uint8_t>> claim_queue{};
   std::queue<jay::name> cannot_claim_queue{};
 
-  jay::address_claimer addr_claimer{ local_name };
-  jay::address_claimer::st_claiming claim_state_{};
-  jay::address_claimer::st_has_address has_address_state_{};
+  jay::address_state_machine addr_claimer{ local_name };
+  jay::address_state_machine::st_claiming claim_state_{};
+  jay::address_state_machine::st_has_address has_address_state_{};
 
-  boost::sml::sm<jay::address_claimer, boost::sml::testing> state_machine{ addr_claimer,
+  boost::sml::sm<jay::address_state_machine, boost::sml::testing> state_machine{ addr_claimer,
     j1939_network,
     claim_state_,
     has_address_state_,
-    jay::address_claimer::ev_start_claim{} };
+    jay::address_state_machine::ev_start_claim{} };
 };
 
 TEST_F(StateMachineTest, Jay_State_Machine_NoAddress_Test)
 {
   // Check state
-  state_machine.set_current_states(boost::sml::state<jay::address_claimer::st_no_address>);
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_no_address>));
+  state_machine.set_current_states(boost::sml::state<jay::address_state_machine::st_no_address>);
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_no_address>));
 
   // No address, trigger cannot claim, should return a claim frame with idle address
   // which is the same as a cannot claim address frame
-  state_machine.process_event(jay::address_claimer::ev_address_request{});
+  state_machine.process_event(jay::address_state_machine::ev_address_request{});
   ASSERT_EQ(cannot_claim_queue.size(), 1);
   ASSERT_EQ(cannot_claim_queue.front(), local_name);
   cannot_claim_queue.pop();
@@ -102,22 +102,22 @@ TEST_F(StateMachineTest, Jay_State_Machine_NoAddress_Test)
   auto names_inserted = j1939_network.name_count();
 
   // Process timeout, which should do nothing
-  state_machine.process_event(jay::address_claimer::ev_timeout{});
+  state_machine.process_event(jay::address_state_machine::ev_timeout{});
   ASSERT_EQ(claim_queue.size(), 0);
   ASSERT_EQ(cannot_claim_queue.size(), 0);
   ASSERT_EQ(j1939_network.address_count(), addresses_used);
   ASSERT_EQ(j1939_network.name_count(), names_inserted);
 
   // Process address claim, which should do nothing
-  state_machine.process_event(jay::address_claimer::ev_address_claim{ 0xAA, address });
+  state_machine.process_event(jay::address_state_machine::ev_address_claim{ 0xAA, address });
   ASSERT_EQ(claim_queue.size(), 0);
   ASSERT_EQ(cannot_claim_queue.size(), 0);
   ASSERT_EQ(j1939_network.address_count(), addresses_used);
   ASSERT_EQ(j1939_network.name_count(), names_inserted);
 
   // Start address claim - creates address claim frame
-  state_machine.process_event(jay::address_claimer::ev_start_claim{ address });
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
+  state_machine.process_event(jay::address_state_machine::ev_start_claim{ address });
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_claiming>));
 
   // Check address claim frame
   auto claim_pair = claim_queue.front();
@@ -126,16 +126,16 @@ TEST_F(StateMachineTest, Jay_State_Machine_NoAddress_Test)
   claim_queue.pop();
 
   // Change state back
-  state_machine.set_current_states(boost::sml::state<jay::address_claimer::st_no_address>);
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_no_address>));
+  state_machine.set_current_states(boost::sml::state<jay::address_state_machine::st_no_address>);
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_no_address>));
 
   for (uint8_t i = 0U; i < 200; i++) {/// Fill network
     j1939_network.insert(i, i);
   }
 
   // Start address claim - but proffered address cant be claimed address required
-  state_machine.process_event(jay::address_claimer::ev_start_claim{ address });
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
+  state_machine.process_event(jay::address_state_machine::ev_start_claim{ address });
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_claiming>));
 
   // Check address claim frame
   claim_pair = claim_queue.front();
@@ -144,8 +144,8 @@ TEST_F(StateMachineTest, Jay_State_Machine_NoAddress_Test)
   claim_queue.pop();
 
   // Change state back
-  state_machine.set_current_states(boost::sml::state<jay::address_claimer::st_no_address>);
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_no_address>));
+  state_machine.set_current_states(boost::sml::state<jay::address_state_machine::st_no_address>);
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_no_address>));
 
   for (uint8_t i = 200; i < jay::J1939_NO_ADDR; i++) {/// Fill network
     j1939_network.insert(i, i);
@@ -154,8 +154,8 @@ TEST_F(StateMachineTest, Jay_State_Machine_NoAddress_Test)
   ASSERT_TRUE(j1939_network.full());
 
   // Try to start claiming
-  state_machine.process_event(jay::address_claimer::ev_start_claim{ address });// fails to change
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_no_address>));
+  state_machine.process_event(jay::address_state_machine::ev_start_claim{ address });// fails to change
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_no_address>));
 
   // Sends cannot claim
   ASSERT_EQ(cannot_claim_queue.size(), 1);
@@ -168,8 +168,8 @@ TEST_F(StateMachineTest, Jay_State_Machine_Claiming_Test)
   ASSERT_FALSE(j1939_network.full());
 
   // Set state
-  state_machine.set_current_states(boost::sml::state<jay::address_claimer::st_no_address>);
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_no_address>));
+  state_machine.set_current_states(boost::sml::state<jay::address_state_machine::st_no_address>);
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_no_address>));
 
   // Insert names into network
   for (uint8_t i = 0U; i < 0xB5U; i++) {/// Fill network
@@ -177,22 +177,22 @@ TEST_F(StateMachineTest, Jay_State_Machine_Claiming_Test)
   }
 
   // Change to claiming though name is already taken so change address to available
-  state_machine.process_event(jay::address_claimer::ev_start_claim{ address });
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
+  state_machine.process_event(jay::address_state_machine::ev_start_claim{ address });
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_claiming>));
   auto claim_pair = claim_queue.front();
   ASSERT_EQ(claim_pair.first, local_name);
   ASSERT_EQ(claim_pair.second, 0xB5U);
   claim_queue.pop();
 
   // Non competing address claim, no response needed
-  state_machine.process_event(jay::address_claimer::ev_address_claim{ 0x0, 150 });
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
+  state_machine.process_event(jay::address_state_machine::ev_address_claim{ 0x0, 150 });
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_claiming>));
   ASSERT_EQ(claim_queue.size(), 0);
 
   // Get competing address claim from device with higher priority
   j1939_network.insert(0x0U, 0xB5U);
-  state_machine.process_event(jay::address_claimer::ev_address_claim{ 0x0, 0xB5U });
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
+  state_machine.process_event(jay::address_state_machine::ev_address_claim{ 0x0, 0xB5U });
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_claiming>));
 
   ASSERT_EQ(claim_queue.size(), 1);
   claim_pair = claim_queue.front();
@@ -201,8 +201,8 @@ TEST_F(StateMachineTest, Jay_State_Machine_Claiming_Test)
   claim_queue.pop();
 
   // Get competing address claim from device with lower priority
-  state_machine.process_event(jay::address_claimer::ev_address_claim{ 0xFFFF, 0xB6U });
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
+  state_machine.process_event(jay::address_state_machine::ev_address_claim{ 0xFFFF, 0xB6U });
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_claiming>));
 
   ASSERT_EQ(claim_queue.size(), 1);
   claim_pair = claim_queue.front();
@@ -211,8 +211,8 @@ TEST_F(StateMachineTest, Jay_State_Machine_Claiming_Test)
   claim_queue.pop();
 
   // Respond to request when claiming
-  state_machine.process_event(jay::address_claimer::ev_address_request{});
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
+  state_machine.process_event(jay::address_state_machine::ev_address_request{});
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_claiming>));
   ASSERT_EQ(claim_queue.size(), 1);
   claim_pair = claim_queue.front();
   ASSERT_EQ(claim_pair.first, local_name);
@@ -220,21 +220,21 @@ TEST_F(StateMachineTest, Jay_State_Machine_Claiming_Test)
   claim_queue.pop();
 
   // Timeout event into Has address state
-  state_machine.process_event(jay::address_claimer::ev_timeout{});
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_has_address>));
+  state_machine.process_event(jay::address_state_machine::ev_timeout{});
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_has_address>));
   ASSERT_TRUE(j1939_network.in_network(local_name));
 
   // Change to no address state and manually release name from network
   j1939_network.release(local_name);
-  state_machine.set_current_states(boost::sml::state<jay::address_claimer::st_no_address>);
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_no_address>));
+  state_machine.set_current_states(boost::sml::state<jay::address_state_machine::st_no_address>);
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_no_address>));
 
   // Should not send cannot claim as addresses are available
   ASSERT_EQ(cannot_claim_queue.size(), 0);
 
   // Start claiming
-  state_machine.process_event(jay::address_claimer::ev_start_claim{ 0xAA });
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
+  state_machine.process_event(jay::address_state_machine::ev_start_claim{ 0xAA });
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_claiming>));
 
   ASSERT_EQ(claim_queue.size(), 1);
   claim_pair = claim_queue.front();
@@ -245,7 +245,7 @@ TEST_F(StateMachineTest, Jay_State_Machine_Claiming_Test)
   // Fill remaining addresses, until none are available
   for (uint8_t i = 0xB6U; i < jay::J1939_IDLE_ADDR; i++) {/// Fill network
     j1939_network.insert(i, i);
-    state_machine.process_event(jay::address_claimer::ev_address_claim{ i, i });
+    state_machine.process_event(jay::address_state_machine::ev_address_claim{ i, i });
   }
 
   ASSERT_EQ(claim_queue.size(), jay::J1939_IDLE_ADDR - 0xB6U - 1);
@@ -264,17 +264,17 @@ TEST_F(StateMachineTest, Jay_State_Machine_Claiming_Test)
   ASSERT_TRUE(j1939_network.full());
 
   // No address available means falling to no address state
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_address_lost>));
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_address_lost>));
 }
 
 TEST_F(StateMachineTest, Jay_State_Machine_HasAddress_Test)
 {
-  state_machine.set_current_states(boost::sml::state<jay::address_claimer::st_no_address>);
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_no_address>));
+  state_machine.set_current_states(boost::sml::state<jay::address_state_machine::st_no_address>);
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_no_address>));
 
   // Change to claiming
-  state_machine.process_event(jay::address_claimer::ev_start_claim{ address });
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
+  state_machine.process_event(jay::address_state_machine::ev_start_claim{ address });
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_claiming>));
 
   auto claim_pair = claim_queue.front();
   ASSERT_EQ(claim_queue.size(), 1);
@@ -283,13 +283,13 @@ TEST_F(StateMachineTest, Jay_State_Machine_HasAddress_Test)
   claim_queue.pop();
 
   // Change to has address, make sure that the address is set
-  state_machine.process_event(jay::address_claimer::ev_timeout{});
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_has_address>));
+  state_machine.process_event(jay::address_state_machine::ev_timeout{});
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_has_address>));
   ASSERT_EQ(j1939_network.get_address(local_name), address);
 
   // Address request event
-  state_machine.process_event(jay::address_claimer::ev_address_request{});
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_has_address>));
+  state_machine.process_event(jay::address_state_machine::ev_address_request{});
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_has_address>));
   claim_pair = claim_queue.front();
   ASSERT_EQ(claim_queue.size(), 1);
   ASSERT_EQ(claim_pair.first, local_name);
@@ -297,14 +297,14 @@ TEST_F(StateMachineTest, Jay_State_Machine_HasAddress_Test)
   claim_queue.pop();
 
   // Non competing address claim
-  state_machine.process_event(jay::address_claimer::ev_address_claim{ 0x0, 150 });
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_has_address>));
+  state_machine.process_event(jay::address_state_machine::ev_address_claim{ 0x0, 150 });
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_has_address>));
   ASSERT_EQ(claim_queue.size(), 0);
 
   // Get competing address claim from device with higher priority
   j1939_network.insert(170, 170);
-  state_machine.process_event(jay::address_claimer::ev_address_claim{ 170, 170 });
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_claiming>));
+  state_machine.process_event(jay::address_state_machine::ev_address_claim{ 170, 170 });
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_claiming>));
 
   claim_pair = claim_queue.front();
   ASSERT_EQ(claim_queue.size(), 1);
@@ -313,13 +313,13 @@ TEST_F(StateMachineTest, Jay_State_Machine_HasAddress_Test)
   claim_queue.pop();
 
   // Change to has address, make sure that the address is set
-  state_machine.process_event(jay::address_claimer::ev_timeout{});
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_has_address>));
+  state_machine.process_event(jay::address_state_machine::ev_timeout{});
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_has_address>));
   ASSERT_EQ(j1939_network.get_address(local_name), 171);
 
   // Get competing address claim from device with lower priority
-  state_machine.process_event(jay::address_claimer::ev_address_claim{ 0xFFFF, 171 });
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_has_address>));
+  state_machine.process_event(jay::address_state_machine::ev_address_claim{ 0xFFFF, 171 });
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_has_address>));
 
   claim_pair = claim_queue.front();
   ASSERT_EQ(claim_queue.size(), 1);
@@ -332,8 +332,8 @@ TEST_F(StateMachineTest, Jay_State_Machine_HasAddress_Test)
     j1939_network.insert(i, i);
   }
 
-  state_machine.process_event(jay::address_claimer::ev_address_claim{ 0x0, 171 });
-  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_claimer::st_address_lost>));
+  state_machine.process_event(jay::address_state_machine::ev_address_claim{ 0x0, 171 });
+  ASSERT_TRUE(state_machine.is(boost::sml::state<jay::address_state_machine::st_address_lost>));
 
   // Sends cannot claim as no address is available
   ASSERT_EQ(cannot_claim_queue.size(), 1);
