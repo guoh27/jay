@@ -27,10 +27,10 @@ namespace jay {
  * @note Each state machine is responsible for only one name address pair
  * @note The state machine does not (cant?) manage delays / timeouts internally
  */
-class address_claimer
+class address_state_machine
 {
 public:
-  using self = address_claimer;
+  using self = address_state_machine;
 
   /**
    * @brief Callbacks for generating outputs
@@ -50,14 +50,14 @@ public:
    * @brief Constructor
    * @param name to get an address for
    */
-  explicit address_claimer(name name) : name_(name), callbacks_() {}
+  explicit address_state_machine(name name) : name_(name), callbacks_() {}
 
   /**
    * @brief Constructor
    * @param name to get an address for
    * @param callbacks
    */
-  address_claimer(name name, callbacks &&callbacks) : name_(name), callbacks_(std::move(callbacks))
+  address_state_machine(name name, callbacks &&callbacks) : name_(name), callbacks_(std::move(callbacks))
   {
     assert(callbacks_.on_address);
     assert(callbacks_.on_lose_address);
