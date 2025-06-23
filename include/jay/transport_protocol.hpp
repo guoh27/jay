@@ -402,7 +402,17 @@ private:
       auto count = fr.payload[1];
       send_data_packets(it->second, count);
     } else {
-      // TODO: CTS without session? maybe have timeouted
+      // Received CTS but we have no active TX session – abort
+      TpSession dummy;
+      dummy.dir = TpSession::Direction::Tx;
+      dummy.dest_sa = fr.header.source_address();
+      dummy.src_sa = bus_.source_address();
+      dummy.pgn = get_payload_pgn(fr);
+      dummy.length = 0;
+      dummy.total_packets = 0;
+      dummy.window_size = 0;
+      send_abort(dummy, AbortCode::UnexpectedPacket);
+      report_error("cts without session", boost::asio::error::operation_aborted);
     }
   }
 
@@ -427,18 +437,38 @@ private:
     auto key = make_key(fr.header.source_address(), fr.header.pdu_specific());
     auto it = sessions_.find(key);
     if (it == sessions_.end()) {
-      // TODO: DT without session? maybe timeout
+      // Data packet without an active session
+      TpSession dummy;
+      dummy.dir = TpSession::Direction::Rx;
+      dummy.dest_sa = fr.header.pdu_specific();
+      dummy.src_sa = fr.header.source_address();
+      dummy.pgn = get_payload_pgn(fr);
+      dummy.length = 0;
+      dummy.total_packets = 0;
+      dummy.window_size = 0;
+      send_abort(dummy, AbortCode::UnexpectedPacket);
+      report_error("dt without session", boost::asio::error::operation_aborted);
       return;
     }
 
     auto &session = it->second;
     std::uint8_t seq = fr.payload[0];
-    if (seq < 1 || seq > session.total_packets || seq != session.next_seq) {
-      // TODO: wrong sequence
+    if (seq < 1 || seq > session.total_packets) {
+      send_abort(session, AbortCode::BadSequence);
+      report_error("dt bad sequence", boost::asio::error::fault);
+      sessions_.erase(it);
       return;
     }
     if (seq < session.next_seq) {
-      // TODO: duplicate sequence
+      send_abort(session, AbortCode::DuplicateSeq);
+      report_error("dt duplicate sequence", boost::asio::error::fault);
+      sessions_.erase(it);
+      return;
+    }
+    if (seq != session.next_seq) {
+      send_abort(session, AbortCode::BadSequence);
+      report_error("dt unexpected sequence", boost::asio::error::fault);
+      sessions_.erase(it);
       return;
     }
 
