@@ -32,6 +32,7 @@ namespace jay {
 class network
 {
 public:
+  using OnNewName = std::function<void(jay::name, jay::address_t)>;
   /**
    * @brief Construct a new network object
    *
@@ -39,13 +40,50 @@ public:
    */
   explicit network(std::string interface_name) : interface_name_(interface_name) {}
 
-  /// TODO: Should be able to implement a copy, but deleted in the meantime
+  network(const std::string &interface_name, const OnNewName &on_new_name) noexcept
+    : interface_name_(interface_name), on_new_name_(on_new_name)
+  {}
+
+  network(const std::string &interface_name, OnNewName &&on_new_name) noexcept
+    : interface_name_(interface_name), on_new_name_(std::move(on_new_name))
+  {}
+
   network(const network &) = delete;
   network &operator=(const network &) = delete;
 
   // Move
   network(network &&) = delete;
   network &operator=(network &&) = delete;
+
+  /// ##################### Callback ##################### ///
+
+  /**
+   * @brief Set the on new name callback using a copy
+   *
+   * @param on_new_name callback for when a new name is added to the network
+   * @note When the callback is triggered the network is locked. So the callback should be fast
+   * and cant call any network functions. Its recommended to copy the name and
+   * queue it for later processing in an io_context.
+   */
+  void on_new_name_callback(const OnNewName &on_new_name) noexcept
+  {
+    std::scoped_lock lock{ network_mtx_ };
+    on_new_name_ = on_new_name;
+  }
+
+  /**
+   * @brief Set the on new name callback using a move
+   *
+   * @param on_new_name callback for when a new name is added to the network
+   * @note When the callback is triggered the network is locked. So the callback should be fast
+   * and cant call any network functions. Its recommended to copy the name and
+   * queue it for later processing in an io_context.
+   */
+  void on_new_name_callback(OnNewName &&on_new_name) noexcept
+  {
+    std::scoped_lock lock{ network_mtx_ };
+    on_new_name_ = std::move(on_new_name);
+  }
 
   /// ##################### Copy Internal ##################### ///
 
@@ -103,6 +141,7 @@ public:
 
     addr_name_map_[address] = name;
     name_addr_map_[name] = address;
+    if (on_new_name_) { on_new_name_(name, address); }
     return true;
   }
 
@@ -311,6 +350,7 @@ private:
 
 private:
   const std::string interface_name_{ "can0" };
+  OnNewName on_new_name_;
 
   /// NOTE: Could implement maps as a bidirectional map,
   /// but would need somewhere for names with null address

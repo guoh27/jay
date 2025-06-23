@@ -14,11 +14,11 @@
 #include <canary/filter.hpp>
 
 // Local
-#include "j1939.hpp"
+#include "j1939_type.hpp"
 
 namespace jay {
 
-[[nodiscard]] inline canary::filter make_address_request_filter() noexcept
+inline canary::filter make_address_request_filter() noexcept
 {
   canary::filter filter{};
   filter.id(J1939_PGN_REQUEST << 8);
@@ -35,7 +35,7 @@ namespace jay {
  * @return canary::filter
  * @todo Add the mask to jay as a J1939_ID_PF_PDU1_MAX?
  */
-[[nodiscard]] inline canary::filter make_address_claim_filter() noexcept
+inline canary::filter make_address_claim_filter() noexcept
 {
   canary::filter filter{};
   filter.id(J1939_PGN_ADDRESS_CLAIMED << 8);

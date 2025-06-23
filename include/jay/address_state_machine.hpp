@@ -199,9 +199,23 @@ private:
     return address_conflict(l_address, r_address) && !address_priority(name);
   }
 
+  /**
+   * @brief Check name is allowed retry claim
+   *
+   * @param net
+   * @return true
+   * @return false
+   */
   bool retry_allowed(const network &net) const { return name_.self_config_address() && address_available(net); }
 
-  bool retry_disallowed(const network &net) const { return !name_.self_config_address() || !address_available(net); }
+  /**
+   * @brief Check name is disallowed retry claim
+   *
+   * @param net
+   * @return true
+   * @return false
+   */
+  bool retry_disallowed(const network &net) const { return !retry_allowed(net); }
 
   /// State specific guards
 
@@ -395,7 +409,6 @@ private:
   void begin_claiming_address(st_claiming &claiming, const network &network) const
   {
     if (callbacks_.on_begin_claiming) { callbacks_.on_begin_claiming(); }
-    claiming.address = network.find_address(name_, claiming.address, false);
     claim_address(claiming, network);
   }
 
@@ -459,12 +472,13 @@ public:
   auto operator()() const
   {
     using namespace boost::sml;
+    // clang-format off
     return make_transition_table(
+      *
       // No Address
-      *state<st_no_address> + on_entry<_> / &self::send_request,
+      state<st_no_address> + on_entry<_> / &self::send_request,
       state<st_no_address> + event<ev_address_request>[&self::is_global_address_req] / &self::send_cannot_claim,
-      state<st_no_address> + event<ev_start_claim>[&self::address_available] / &self::set_pref_address =
-        state<st_claiming>,
+      state<st_no_address> + event<ev_start_claim>[&self::address_available] / &self::set_pref_address = state<st_claiming>,
       state<st_no_address> + event<ev_start_claim>[&self::no_address_available] / &self::send_cannot_claim,
 
       // Claiming
@@ -479,18 +493,17 @@ public:
       state<st_has_address> + on_entry<_> / &self::notify_address_gain,
       state<st_has_address> + event<ev_address_request>[&self::valid_address_request] / &self::send_claimed,
       state<st_has_address> + event<ev_address_claim>[&self::claimed_priority] / &self::send_claimed,
-      state<st_has_address> + event<ev_address_claim>[&self::claimed_loss] / &self::set_claiming_address =
-        state<st_claiming>,
+      state<st_has_address> + event<ev_address_claim>[&self::claimed_loss] / &self::set_claiming_address = state<st_claiming>,
       state<st_has_address> + event<ev_address_claim>[&self::claimed_failure] = state<st_address_lost>,
       state<st_has_address> + boost::sml::on_exit<_> / &self::notify_address_loss,
 
       // Address Lost
       state<st_address_lost> + on_entry<_> / &self::send_cannot_claim,
       state<st_address_lost> + event<ev_address_request>[&self::is_global_address_req] / &self::send_cannot_claim,
-      state<st_address_lost> + event<ev_random_retry>[&self::retry_allowed] / &self::set_pref_address =
-        state<st_claiming>,
-      state<st_address_lost> + event<ev_random_retry>[&self::retry_disallowed] / &self::send_cannot_claim =
-        state<st_no_address>);
+      state<st_address_lost> + event<ev_random_retry>[&self::retry_allowed] / &self::set_pref_address = state<st_claiming>,
+      state<st_address_lost> + event<ev_random_retry>[&self::retry_disallowed] / &self::send_cannot_claim = state<st_no_address>
+    );
+    // clang-format on
   }
 
 private:

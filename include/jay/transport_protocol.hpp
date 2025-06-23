@@ -213,7 +213,6 @@ private:
     fr.payload[7] = (s.pgn >> 16) & 0xFF;
   }
 
-private:
   // Session key helper
   using Key = std::tuple<jay::address_t, jay::address_t>;// src, dst
 
@@ -402,6 +401,8 @@ private:
     if (auto it = sessions_.find(key); it != sessions_.end()) {
       auto count = fr.payload[1];
       send_data_packets(it->second, count);
+    } else {
+      // TODO: CTS without session? maybe have timeouted
     }
   }
 
@@ -425,11 +426,21 @@ private:
   {
     auto key = make_key(fr.header.source_address(), fr.header.pdu_specific());
     auto it = sessions_.find(key);
-    if (it == sessions_.end()) return;
+    if (it == sessions_.end()) {
+      // TODO: DT without session? maybe timeout
+      return;
+    }
 
     auto &session = it->second;
     std::uint8_t seq = fr.payload[0];
-    if (seq < 1 || seq > session.total_packets) return;// bad
+    if (seq < 1 || seq > session.total_packets || seq != session.next_seq) {
+      // TODO: wrong sequence
+      return;
+    }
+    if (seq < session.next_seq) {
+      // TODO: duplicate sequence
+      return;
+    }
 
     std::size_t offset = (seq - 1) * 7;
     auto avail = std::min<std::size_t>(7, session.buffer.size() - offset);

@@ -29,7 +29,7 @@ int main()
 
   // ------- Create network components ------- //
 
-  auto vcan0_network = std::make_shared<jay::network>("vcan0");
+  auto vcan0_network = jay::network("vcan0");
   auto conn = std::make_shared<jay::j1939_connection>(io_layer, vcan0_network);
   jay::address_claimer addr_mngr{ io_layer, jay::name{ 0x7758 }, vcan0_network };
 

@@ -39,10 +39,10 @@ public:
    * @param network containing name address pairs
    * @note remember to add callbacks for getting data out of object
    */
-  address_claimer(boost::asio::io_context &context, jay::name name, std::shared_ptr<jay::network> network)
+  address_claimer(boost::asio::io_context &context, jay::name name, jay::network &network)
     : context_(context), network_(network), addr_claimer_(name), claim_state_(), has_address_state_(),
       state_machine_(addr_claimer_,
-        *network_,
+        network_,
         claim_state_,
         has_address_state_,
         jay::address_state_machine::ev_start_claim{}),
@@ -118,6 +118,10 @@ public:
    */
   inline void process_claim(const jay::name name, const std::uint8_t address_claimed)
   {
+    if (!network_.insert(name, address_claimed)) {
+      if (on_error_) { on_error_("on_frame_address_claim", boost::asio::error::address_in_use); }
+      return;
+    }
     address_claim(jay::address_state_machine::ev_address_claim{ name, address_claimed });
   }
 
@@ -180,7 +184,7 @@ private:
    */
   void on_address(jay::name name, std::uint8_t address)
   {
-    network_->insert(name, address);
+    network_.insert(name, address);
     if (on_address_) { on_address_(name, address); }
   }
 
@@ -191,7 +195,7 @@ private:
    */
   void on_address_loss(jay::name name)
   {
-    network_->release(name);
+    network_.release(name);
     if (on_lose_address_) { on_lose_address_(name); }
   }
 
@@ -267,7 +271,7 @@ private:
 
   // Injected
   boost::asio::io_context &context_;
-  std::shared_ptr<jay::network> network_;
+  jay::network &network_;
 
   // Internal
 

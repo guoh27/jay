@@ -66,8 +66,8 @@ public:
    * @param io_context for performing async io operation
    * @param network containing address name pairs
    */
-  j1939_connection(boost::asio::io_context &io, std::shared_ptr<jay::network> net)
-    : socket_(boost::asio::make_strand(io)), network_(std::move(net)), strand_(socket_.get_executor()),
+  j1939_connection(boost::asio::io_context &io, jay::network &net)
+    : socket_(boost::asio::make_strand(io)), network_(net), strand_(socket_.get_executor()),
       bus_(std::make_unique<bus_adapter>(strand_, [this](const jay::frame &fr) { return this->send_raw(fr); })),
       tp_(std::make_unique<transport_protocol>(*bus_))
   {
@@ -83,10 +83,10 @@ public:
    * @param target_name that this connection is sending messages to
    */
   j1939_connection(boost::asio::io_context &io,
-    std::shared_ptr<jay::network> net,
+    jay::network &net,
     std::optional<jay::name> local_name,
     std::optional<jay::name> target_name)
-    : socket_(boost::asio::make_strand(io)), network_(std::move(net)), strand_(socket_.get_executor()),
+    : socket_(boost::asio::make_strand(io)), network_(net), strand_(socket_.get_executor()),
       bus_(std::make_unique<bus_adapter>(strand_, [this](const jay::frame &fr) { return this->send_raw(fr); })),
       tp_(std::make_unique<transport_protocol>(*bus_)), local_name_(local_name), target_name_(target_name)
   {
@@ -110,19 +110,19 @@ public:
   bool open()
   {
     canary::error_code ec;
-    auto endpoint = canary::raw::endpoint{ canary::get_interface_index(network_->get_interface_name(), ec) };
+    auto endpoint = canary::raw::endpoint{ canary::get_interface_index(network_.get_interface_name(), ec) };
     if (ec.failed()) {
-      if (on_error_) { on_error_("open " + network_->get_interface_name() + " failed", ec); }
+      if (on_error_) { on_error_("open " + network_.get_interface_name() + " failed", ec); }
       return false;
     }
     socket_.open(endpoint.protocol(), ec);
     if (ec.failed()) {
-      if (on_error_) { on_error_("open " + network_->get_interface_name() + " failed", ec); }
+      if (on_error_) { on_error_("open " + network_.get_interface_name() + " failed", ec); }
       return false;
     }
     socket_.bind(endpoint, ec);
     if (ec.failed()) {
-      if (on_error_) { on_error_("bind " + network_->get_interface_name() + " failed", ec); }
+      if (on_error_) { on_error_("bind " + network_.get_interface_name() + " failed", ec); }
       return false;
     }
     return true;
@@ -146,6 +146,7 @@ public:
   void start()
   {
     if (on_start_) { on_start_(this); }
+    tp_->start_tick(std::chrono::milliseconds(100));
     async_read();
   }
 
@@ -223,7 +224,7 @@ public:
    * @brief Get the Network reference
    * @return jay::network&
    */
-  std::shared_ptr<jay::network> get_network() const { return network_; }
+  jay::network &get_network() const { return network_; }
 
   /// ##################### WRITE ##################### ///
 
@@ -241,7 +242,7 @@ public:
       for (std::size_t i = 0; i < data.payload.size(); ++i) { fr.payload[i] = data.payload[i]; }
       return send(fr);
     } else {
-      auto source_address = network_->get_address(*local_name_);
+      auto source_address = network_.get_address(*local_name_);
       if (source_address == J1939_IDLE_ADDR) {
         on_error_(
           "Socket has no source address", boost::system::errc::make_error_code(boost::system::errc::invalid_argument));
@@ -262,7 +263,7 @@ public:
   bool send(const jay::frame &j1939_frame)
   {
     if (j1939_frame.header.is_broadcast()) {
-      auto source_address = network_->get_address(*local_name_);
+      auto source_address = network_.get_address(*local_name_);
       if (source_address == J1939_IDLE_ADDR) {
         on_error_("connection has no source address",
           boost::system::errc::make_error_code(boost::system::errc::invalid_argument));
@@ -300,14 +301,14 @@ public:
       return false;
     }
 
-    auto source_address = network_->get_address(*local_name_);
+    auto source_address = network_.get_address(*local_name_);
     if (source_address == J1939_IDLE_ADDR) {
       on_error_("connection has no source address",
         boost::system::errc::make_error_code(boost::system::errc::invalid_argument));
       return false;
     }
 
-    auto destination_address = network_->get_address(name);
+    auto destination_address = network_.get_address(name);
     if (destination_address == J1939_IDLE_ADDR) {
       on_error_(
         "Destination has no address", boost::system::errc::make_error_code(boost::system::errc::invalid_argument));
@@ -336,6 +337,12 @@ private:
     on_error_(what, ec);
   }
 
+  bool normal_pgn(pgn_t pgn)
+  {
+    return pgn != jay::PGN_TP_CM && pgn != jay::PGN_TP_DT && pgn != jay::J1939_PGN_REQUEST
+           && pgn != jay::J1939_PGN_ADDRESS_CLAIMED && pgn != jay::J1939_PGN_ADDRESS_COMMANDED;
+  }
+
   /**
    * Read data from socket
    *
@@ -352,7 +359,14 @@ private:
       // Trigger callback with frame if we are supposed to get the frame
       if (check_address()) {
         tp_->on_can_frame(buffer_);
-        on_data_({ buffer_.header, { buffer_.payload.begin(), buffer_.payload.end() } });
+
+        if (normal_pgn(buffer_.header.pgn())) {
+          data d;
+          d.header = buffer_.header;
+          d.payload.resize(buffer_.header.payload_length());
+          std::memcpy(&d.payload[0], &buffer_.payload[0], buffer_.header.payload_length());
+          on_data_(d);
+        }
       }
 
       // Clear buffer
@@ -393,37 +407,35 @@ private:
     /// If we dont have any names then accept any frame
     if (!target_name_ && !local_name_) { return true; }
 
-    if (local_name_) { bus_->source_address(network_->get_address(*local_name_)); }
+    if (local_name_) { bus_->source_address(network_.get_address(*local_name_)); }
 
     // We can accept broadcasts from target is there is one
     if (buffer_.header.is_broadcast()) {
-      if (target_name_) { return network_->get_address(*target_name_) == buffer_.header.source_address(); }
+      if (target_name_) { return network_.get_address(*target_name_) == buffer_.header.source_address(); }
       return true;
     }
 
     // If we have both target and local name then
     // check source and target address, given its not a broadcast
     if (target_name_ && local_name_) {
-      return network_->get_address(*target_name_) == buffer_.header.source_address()
-             && network_->get_address(*local_name_) == buffer_.header.pdu_specific();
+      return network_.get_address(*target_name_) == buffer_.header.source_address()
+             && network_.get_address(*local_name_) == buffer_.header.pdu_specific();
     }
 
     /// Feel like these two last are more outliers
 
     // If message is for local name, but we dont care who its from
-    if (!target_name_ && local_name_) { return network_->get_address(*local_name_) == buffer_.header.pdu_specific(); }
+    if (!target_name_ && local_name_) { return network_.get_address(*local_name_) == buffer_.header.pdu_specific(); }
 
     // Check that the message is from our intended target but we dont care if its for us
-    if (target_name_ && !local_name_) {
-      return network_->get_address(*target_name_) == buffer_.header.source_address();
-    }
+    if (target_name_ && !local_name_) { return network_.get_address(*target_name_) == buffer_.header.source_address(); }
 
     return false;
   }
 
 private:
   canary::raw::socket socket_; /**< raw CAN-bus socket */
-  std::shared_ptr<jay::network> network_; /**< Network reference for querying network for addresses */
+  jay::network &network_; /**< Network reference for querying network for addresses */
   boost::asio::strand<boost::asio::any_io_executor> strand_;
 
   std::unique_ptr<bus_adapter> bus_;
