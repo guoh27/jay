@@ -22,7 +22,7 @@ protected:
   explicit AddressClaimerTest()
   {
     j1939_network = std::make_shared<jay::network>("vcan0");
-    addr_mng = new jay::address_claimer(io, local_name, j1939_network);
+    addr_mng = new jay::address_claimer(io, local_name, *j1939_network);
     /// Outputs used for debugging
     addr_mng->on_frame([this](jay::frame frame) -> void {
       // std::cout << "Sending: " << frame.to_string() << std::endl;
