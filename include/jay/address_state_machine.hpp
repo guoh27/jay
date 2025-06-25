@@ -136,7 +136,7 @@ public:
    */
   struct ev_address_request
   {
-    std::uint8_t destination_address{};
+    std::uint8_t destination_address{ jay::J1939_NO_ADDR };
   };
 
   /**

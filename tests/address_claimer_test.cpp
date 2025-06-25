@@ -21,19 +21,17 @@ protected:
   //
   explicit AddressClaimerTest()
   {
-    j1939_network = std::make_shared<jay::network>("vcan0");
-    addr_mng = new jay::address_claimer(io, local_name, *j1939_network);
     /// Outputs used for debugging
-    addr_mng->on_frame([this](jay::frame frame) -> void {
+    addr_mng.on_frame([this](jay::frame frame) -> void {
       // std::cout << "Sending: " << frame.to_string() << std::endl;
       frame_queue.push(frame);
     });
-    addr_mng->on_error(
+    addr_mng.on_error(
       [](std::string what, auto error) -> void { std::cout << what << " : " << error.message() << std::endl; });
   }
 
   //
-  ~AddressClaimerTest() override { delete addr_mng; };
+  ~AddressClaimerTest() override{};
 
   //
   void SetUp() override
@@ -42,15 +40,15 @@ protected:
   }
 
   //
-  void TearDown() override { j1939_network->clear(); }
+  void TearDown() override { j1939_network.clear(); }
 
 public:
   std::queue<jay::frame> frame_queue{};
 
   boost::asio::io_context io{};
   jay::name local_name{ 0xFF };
-  std::shared_ptr<jay::network> j1939_network;
-  jay::address_claimer *addr_mng{};
+  jay::network j1939_network{ "vcan0" };
+  jay::address_claimer addr_mng{ io, local_name, j1939_network };
 };
 
 TEST_F(AddressClaimerTest, Jay_Address_Claimer_Test)
@@ -59,7 +57,7 @@ TEST_F(AddressClaimerTest, Jay_Address_Claimer_Test)
   ASSERT_EQ(frame_queue.size(), 0);
 
   // Return cannot claim address
-  addr_mng->address_request(jay::address_state_machine::ev_address_request{});
+  addr_mng.process(jay::frame::make_address_request());
 
   // Enough time for timeout event to trigger
   io.run_for(std::chrono::milliseconds(260));
@@ -74,18 +72,25 @@ TEST_F(AddressClaimerTest, Jay_Address_Claimer_Test)
   ASSERT_EQ(frame.header.source_address(), jay::J1939_IDLE_ADDR);
   frame_queue.pop();
 
+  ASSERT_EQ(j1939_network.name_count(), 0);
+  ASSERT_EQ(j1939_network.address_count(), 0);
+
   // Does nothing as we have not started claiming address
   jay::name controller_1{ 0xa00c81045a20021b };
   std::uint8_t address_1{ 0x10U };
-  addr_mng->address_claim(jay::address_state_machine::ev_address_claim{ controller_1, address_1 });
+  addr_mng.process(jay::frame::make_address_claim(controller_1, address_1));
 
   // Enough time for timeout event to trigger
   io.run_for(std::chrono::milliseconds(260));
   io.restart();
 
+  // Address claim inserted into network
+  ASSERT_EQ(j1939_network.name_count(), 1);
+  ASSERT_EQ(j1939_network.address_count(), 1);
+
   // Should claim address 0x00
   std::uint8_t address_0{ 0x00U };
-  addr_mng->start_address_claim(address_0);
+  addr_mng.start_address_claim(address_0);
 
   /// TODO: Test running start address claim again
 
@@ -103,12 +108,12 @@ TEST_F(AddressClaimerTest, Jay_Address_Claimer_Test)
   frame_queue.pop();
 
   /// Confirm name and address is registered in network
-  ASSERT_TRUE(j1939_network->in_network(local_name));
-  ASSERT_FALSE(j1939_network->available(address_0));
-  ASSERT_EQ(j1939_network->get_address(local_name), address_0);
+  ASSERT_TRUE(j1939_network.in_network(local_name));
+  ASSERT_FALSE(j1939_network.available(address_0));
+  ASSERT_EQ(j1939_network.get_address(local_name), address_0);
 
   // Should return address claim frame on request
-  addr_mng->address_request(jay::address_state_machine::ev_address_request{});
+  addr_mng.process(jay::frame::make_address_request());
 
   io.run_for(std::chrono::milliseconds(20));
   io.restart();
@@ -122,10 +127,10 @@ TEST_F(AddressClaimerTest, Jay_Address_Claimer_Test)
 
   for (std::uint8_t i = 0; i < jay::J1939_MAX_UNICAST_ADDR; i++) {
     // Insert claim into network
-    j1939_network->insert(i, i);
+    j1939_network.insert(i, i);
 
     // Conflicting claim should change to new address
-    addr_mng->address_claim(jay::address_state_machine::ev_address_claim{ jay::name{ i }, i });
+    addr_mng.process(jay::frame::make_address_claim(jay::name{ i }, static_cast<std::uint8_t>(i)));
 
     io.run_for(std::chrono::milliseconds(260));// Give timeout time to trigger
     io.restart();
@@ -137,21 +142,21 @@ TEST_F(AddressClaimerTest, Jay_Address_Claimer_Test)
     ASSERT_EQ(frame.header.source_address(), static_cast<std::uint8_t>(i + 1));
     frame_queue.pop();
 
-    ASSERT_TRUE(j1939_network->in_network(local_name));
-    ASSERT_EQ(j1939_network->get_address(local_name), static_cast<std::uint8_t>(i + 1));
+    ASSERT_TRUE(j1939_network.in_network(local_name));
+    ASSERT_EQ(j1939_network.get_address(local_name), static_cast<std::uint8_t>(i + 1));
   }
 
   // Insert claim into network
-  j1939_network->insert(jay::J1939_MAX_UNICAST_ADDR, jay::J1939_MAX_UNICAST_ADDR);
+  j1939_network.insert(jay::J1939_MAX_UNICAST_ADDR, jay::J1939_MAX_UNICAST_ADDR);
 
   // Conflicting claim should change to new address
-  addr_mng->address_claim(jay::address_state_machine::ev_address_claim{
-    jay::name{ jay::J1939_MAX_UNICAST_ADDR }, static_cast<std::uint8_t>(jay::J1939_MAX_UNICAST_ADDR) });
+  addr_mng.process(jay::frame::make_address_claim(
+    jay::name{ jay::J1939_MAX_UNICAST_ADDR }, static_cast<std::uint8_t>(jay::J1939_MAX_UNICAST_ADDR)));
 
   io.run_for(std::chrono::milliseconds(260));// Give timeout time to trigger
   io.restart();
 
-  ASSERT_TRUE(j1939_network->full());
+  ASSERT_TRUE(j1939_network.full());
 
   // Check cannot claim address frame
   ASSERT_EQ(frame_queue.size(), 1);

@@ -105,7 +105,7 @@ public:
     if (frame.header.is_claim()) {
       process_claim(jay::name(frame.payload), frame.header.source_address());
     } else if (frame.header.is_request()) {
-      process_request(frame.header.source_address());
+      process_request(frame.header.pdu_specific());
     }
   }
 
