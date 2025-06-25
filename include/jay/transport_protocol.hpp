@@ -54,6 +54,8 @@ constexpr auto T2 = std::chrono::milliseconds(1250);// Between CTS and first DT
 constexpr auto T3 = std::chrono::milliseconds(1250);// End of message ACK wait
 constexpr auto Tr = std::chrono::milliseconds(200);// Minimum separation time
 
+constexpr auto SessionCleanTimeout = std::chrono::minutes(10);// timeout to clean a session
+
 // ──────────────────────────────────────────────────
 // TP Control Bytes (first byte of TP.CM payload)
 // ──────────────────────────────────────────────────
@@ -121,7 +123,12 @@ struct TpSession
   bool bam{ false };
 
   std::chrono::steady_clock::time_point last_activity;
-  bool aborted{ false };
+
+  enum class State : std::uint8_t {
+    InProgress,
+    Completed,
+    ABorted,
+  } state{ State::InProgress };
 };
 
 class transport_protocol : public std::enable_shared_from_this<transport_protocol>
@@ -158,6 +165,8 @@ public:
         send_abort(it->second, AbortCode::Timeout);
         report_error("tp timeout", boost::asio::error::timed_out);
         it = sessions_.erase(it);
+      } else if (now - it->second.last_activity > SessionCleanTimeout) {
+        it = sessions_.erase(it);
       } else {
         ++it;
       }
@@ -180,6 +189,8 @@ public:
     if (error_callback_) { error_callback_(what, ec); }
   }
 
+  void set_rx_handler(J1939OnData cb) { rx_callback_ = std::move(cb); }
+
 private:
   frame make_base_frame(const TpSession &s, pgn_t pgn, jay::address_t dst, jay::address_t src)
   {
@@ -201,9 +212,10 @@ private:
 
   frame make_dt_frame(const TpSession &s) { return make_base_frame(s, PGN_TP_DT, s.dest_sa, s.src_sa); }
 
-  void fill_tp_payload(frame &fr, const TpSession &s, std::optional<std::uint8_t> first = std::nullopt)
+  jay::pgn_t get_payload_pgn(const frame &fr) { return fr.payload[5] | (fr.payload[6] << 8) | (fr.payload[7] << 16); }
+
+  void fill_tp_payload(frame &fr, const TpSession &s)
   {
-    if (first) fr.payload[0] = *first;
     fr.payload[1] = s.length & 0xFF;
     fr.payload[2] = s.length >> 8;
     fr.payload[3] = s.total_packets;
@@ -213,13 +225,23 @@ private:
     fr.payload[7] = (s.pgn >> 16) & 0xFF;
   }
 
-  // Session key helper
-  using Key = std::tuple<jay::address_t, jay::address_t>;// src, dst
-
-  static Key make_key(jay::address_t src, jay::address_t dst) { return { src, dst }; }
-
-  // Map of active sessions
-  std::unordered_map<Key, TpSession, boost::hash<Key>> sessions_;
+  TpSession dummy_abort_session(const frame &fr, TpSession::Direction direction)
+  {
+    TpSession dummy;
+    dummy.dir = direction;
+    if (direction == TpSession::Direction::Tx) {
+      dummy.dest_sa = fr.header.source_address();
+      dummy.src_sa = bus_.source_address();
+    } else {
+      dummy.dest_sa = bus_.source_address();
+      dummy.src_sa = fr.header.source_address();
+    }
+    dummy.pgn = get_payload_pgn(fr);
+    dummy.length = 0;
+    dummy.total_packets = 0;
+    dummy.window_size = 0;
+    return dummy;
+  }
 
   // ── TX path ───────────────────────────────────
   bool start_tx(const std::vector<std::uint8_t> &data, jay::address_t dest, pgn_t pgn)
@@ -281,8 +303,9 @@ private:
     // wait for CTS before sending data
   }
 
-  bool send_data_packets(TpSession &s, std::uint8_t count = 0xFF)
+  bool send_data_packets(TpSession &s)
   {
+    auto count = s.window_size;
     while (s.next_seq <= s.total_packets && count--) {
       frame fr = make_dt_frame(s);
 
@@ -303,8 +326,7 @@ private:
 
     if (s.next_seq > s.total_packets) {
       send_eom_ack(s);
-      auto key = make_key(s.src_sa, s.dest_sa);
-      sessions_.erase(key);
+      s.state = TpSession::State::Completed;
       return true;
     } else {
       // Reason?
@@ -400,17 +422,12 @@ private:
     auto key = make_key(bus_.source_address(), fr.header.source_address());
     if (auto it = sessions_.find(key); it != sessions_.end()) {
       auto count = fr.payload[1];
-      send_data_packets(it->second, count);
+      it->second.window_size = fr.payload[1];
+      it->second.next_seq = fr.payload[2];
+      send_data_packets(it->second);
     } else {
       // Received CTS but we have no active TX session – abort
-      TpSession dummy;
-      dummy.dir = TpSession::Direction::Tx;
-      dummy.dest_sa = fr.header.source_address();
-      dummy.src_sa = bus_.source_address();
-      dummy.pgn = get_payload_pgn(fr);
-      dummy.length = 0;
-      dummy.total_packets = 0;
-      dummy.window_size = 0;
+      TpSession dummy = dummy_abort_session(fr, TpSession::Direction::Tx);
       send_abort(dummy, AbortCode::UnexpectedPacket);
       report_error("cts without session", boost::asio::error::operation_aborted);
     }
@@ -438,14 +455,7 @@ private:
     auto it = sessions_.find(key);
     if (it == sessions_.end()) {
       // Data packet without an active session
-      TpSession dummy;
-      dummy.dir = TpSession::Direction::Rx;
-      dummy.dest_sa = fr.header.pdu_specific();
-      dummy.src_sa = fr.header.source_address();
-      dummy.pgn = get_payload_pgn(fr);
-      dummy.length = 0;
-      dummy.total_packets = 0;
-      dummy.window_size = 0;
+      TpSession dummy = dummy_abort_session(fr, TpSession::Direction::Rx);
       send_abort(dummy, AbortCode::UnexpectedPacket);
       report_error("dt without session", boost::asio::error::operation_aborted);
       return;
@@ -454,27 +464,28 @@ private:
     auto &session = it->second;
     std::uint8_t seq = fr.payload[0];
     if (seq < 1 || seq > session.total_packets) {
+      session.state = TpSession::State::ABorted;
       send_abort(session, AbortCode::BadSequence);
       report_error("dt bad sequence", boost::asio::error::fault);
-      sessions_.erase(it);
       return;
     }
     if (seq < session.next_seq) {
+      session.state = TpSession::State::ABorted;
       send_abort(session, AbortCode::DuplicateSeq);
       report_error("dt duplicate sequence", boost::asio::error::fault);
-      sessions_.erase(it);
       return;
     }
     if (seq != session.next_seq) {
+      session.state = TpSession::State::ABorted;
       send_abort(session, AbortCode::BadSequence);
       report_error("dt unexpected sequence", boost::asio::error::fault);
-      sessions_.erase(it);
       return;
     }
 
     std::size_t offset = (seq - 1) * 7;
     auto avail = std::min<std::size_t>(7, session.buffer.size() - offset);
     std::copy_n(fr.payload.data() + 1, avail, session.buffer.data() + offset);
+    session.next_seq = seq + 1;
     session.last_activity = std::chrono::steady_clock::now();
 
     if (seq == session.total_packets) {
@@ -489,9 +500,12 @@ private:
       }
 
       // send EOM_ACK if not BAM
-      if (!session.bam) send_eom_ack(session);
+      if (!session.bam) {
+        send_eom_ack(session);
+      } else {
+        session.state = TpSession::State::Completed;
+      }
 
-      sessions_.erase(it);
     } else if (seq % session.window_size == 0 && !session.bam) {
       response_cts(session);
     }
@@ -501,27 +515,37 @@ private:
   {
     auto key = make_key(bus_.source_address(), fr.header.source_address());
     if (auto it = sessions_.find(key); it != sessions_.end()) {
-      it->second.aborted = true;
-      sessions_.erase(it);
+      it->second.state = TpSession::State::ABorted;
       auto reason = static_cast<AbortCode>(fr.payload[1]);
       report_error("remote abort: " + to_string(reason), boost::asio::error::operation_aborted);
     }
   }
 
-  void complete_rx(const jay::frame & /*fr*/)
+  void complete_rx(const jay::frame &fr)
   {
-    // nothing – handled in DT loop
+    auto key = make_key(fr.header.source_address(), fr.header.pdu_specific());
+    auto it = sessions_.find(key);
+    if (it == sessions_.end()) {
+      // Data packet without an active session
+      TpSession dummy = dummy_abort_session(fr, TpSession::Direction::Rx);
+      send_abort(dummy, AbortCode::UnexpectedPacket);
+      report_error("eom without session", boost::asio::error::operation_aborted);
+      return;
+    }
+
+    it->second.state = TpSession::State::Completed;
   }
 
-  jay::pgn_t get_payload_pgn(const frame &fr) { return fr.payload[5] | (fr.payload[6] << 8) | (fr.payload[7] << 16); }
+  // Session key helper
+  using Key = std::tuple<jay::address_t, jay::address_t>;// src, dst
 
-public:
-  void set_rx_handler(J1939OnData cb) { rx_callback_ = std::move(cb); }
+  static Key make_key(jay::address_t src, jay::address_t dst) { return { src, dst }; }
 
-private:
   jay::bus &bus_;
   J1939OnData rx_callback_;
   J1939OnError error_callback_;
   boost::asio::steady_timer tick_timer_;
+  // Map of active sessions
+  std::unordered_map<Key, TpSession, boost::hash<Key>> sessions_;
 };
 }// namespace jay
