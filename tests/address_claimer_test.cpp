@@ -28,6 +28,8 @@ protected:
     });
     addr_mng.on_error(
       [](std::string what, auto error) -> void { std::cout << what << " : " << error.message() << std::endl; });
+
+    addr_mng.on_log([](const std::string &msg) { std::cout << msg << std::endl; });
   }
 
   //
@@ -124,13 +126,18 @@ TEST_F(AddressClaimerTest, Jay_Address_Claimer_Test)
   ASSERT_EQ(frame.header.pdu_specific(), jay::J1939_NO_ADDR);
   ASSERT_EQ(frame.header.source_address(), address_0);
   frame_queue.pop();
+  j1939_network.clear();
+
 
   for (std::uint8_t i = 0; i < jay::J1939_MAX_UNICAST_ADDR; i++) {
+    jay::name name{ i };
+    name.self_config_address(1);
+
     // Insert claim into network
-    j1939_network.insert(i, i);
+    j1939_network.insert(name, i);
 
     // Conflicting claim should change to new address
-    addr_mng.process(jay::frame::make_address_claim(jay::name{ i }, static_cast<std::uint8_t>(i)));
+    addr_mng.process(jay::frame::make_address_claim(name, static_cast<std::uint8_t>(i)));
 
     io.run_for(std::chrono::milliseconds(260));// Give timeout time to trigger
     io.restart();

@@ -51,12 +51,12 @@ public:
     // block send
     bool send(const jay::frame &fr) override { return send_(fr); }
 
-    std::uint8_t source_address() const noexcept override { return src_addr_; }
-    void source_address(std::uint8_t sa) noexcept { src_addr_ = sa; }
+    jay::address_t source_address() const noexcept override { return src_addr_; }
+    void source_address(jay::address_t sa) noexcept { src_addr_ = sa; }
 
   private:
     BusSend send_;
-    std::uint8_t src_addr_{ 0xFE };
+    jay::address_t src_addr_{ 0xFE };
   };
 
 

@@ -17,6 +17,7 @@
 #include "boost/asio/deadline_timer.hpp"//boost::asio::deadline_timer
 #include "boost/asio/io_context.hpp"//boost::asio::io_context
 #include "boost/asio/post.hpp"//boost::asio::post
+#include "boost/format.hpp"
 
 // Local
 #include "address_state_machine.hpp"
@@ -24,6 +25,30 @@
 #include "network.hpp"
 
 namespace jay {
+
+namespace detail {
+  template<class T> struct is_on_exit : std::false_type
+  {
+  };
+  template<class S, class E> struct is_on_exit<boost::ext::sml::v1_1_11::back::on_exit<S, E>> : std::true_type
+  {
+  };
+
+  template<class T> struct is_on_entry : std::false_type
+  {
+  };
+  template<class S, class E> struct is_on_entry<boost::ext::sml::v1_1_11::back::on_entry<S, E>> : std::true_type
+  {
+  };
+
+  // trait to detect static constexpr `tag` inside an action type
+  template<class, class = void> struct has_static_tag : std::false_type
+  {
+  };
+  template<class T> struct has_static_tag<T, std::void_t<decltype(T::tag)>> : std::true_type
+  {
+  };
+}// namespace detail
 
 /**
  * @brief Wrapper class for sml state machine that implements timeout events
@@ -40,12 +65,13 @@ public:
    * @note remember to add callbacks for getting data out of object
    */
   address_claimer(boost::asio::io_context &context, jay::name name, jay::network &network)
-    : context_(context), network_(network), addr_claimer_(name), claim_state_(), has_address_state_(),
+    : context_(context), network_(network), addr_claimer_(name), claim_state_(), has_address_state_(), logger_(on_log_),
       state_machine_(addr_claimer_,
         network_,
         claim_state_,
         has_address_state_,
-        jay::address_state_machine::ev_start_claim{}),
+        jay::address_state_machine::ev_start_claim{},
+        logger_),
       timeout_timer_(context_)
   {
     addr_claimer_.set_callbacks(
@@ -56,6 +82,8 @@ public:
         [this]() { on_address_request(); },
         [this](auto name) -> void { on_cannot_claim(name); } });
   }
+
+  void on_log(J1939OnLog log) { on_log_ = log; }
 
   /**
    * @brief Set the callbacks for address manager
@@ -265,6 +293,44 @@ private:
     if (on_error_) { on_error_(what, error_code); }
   }
 
+  struct address_claimer_logger
+  {
+    explicit address_claimer_logger(J1939OnLog &on_log) : on_log_(on_log) {}
+
+    template<class SM, class Event> void log_process_event(const Event &)
+    {
+      if (on_log_) {
+        boost::format f("[%1%] process %2%");
+        on_log_((f % boost::sml::aux::get_type_name<SM>() % boost::sml::aux::get_type_name<Event>()).str());
+      }
+    }
+    template<class SM, class Guard, class Event> void log_guard(const Guard &, const Event &, bool pass)
+    {
+      if (on_log_) {
+        boost::format f("[%1%] guard  %2%  [%3%]");
+        on_log_((
+          f % boost::sml::aux::get_type_name<SM>() % boost::sml::aux::get_type_name<Guard>() % (pass ? "OK" : "Reject"))
+                  .str());
+      }
+    }
+    template<class SM, class Action, class Event> void log_action(const Action &, const Event &)
+    {
+      if (on_log_) {
+        boost::format f("[%1%] action %2%");
+        on_log_((f % boost::sml::aux::get_type_name<SM>() % boost::sml::aux::get_type_name<Action>()).str());
+      }
+    }
+    template<class SM, class Src, class Dst> void log_state_change(const Src &s, const Dst &d)
+    {
+      if (on_log_) {
+        boost::format f("[%1%] %2%  →  %3%");
+        on_log_((f % boost::sml::aux::get_type_name<SM>() % s.c_str() % d.c_str()).str());
+      }
+    }
+
+    J1939OnLog &on_log_;
+  };
+
 
 private:
   /// TODO: Instead of using timeout could use tick?
@@ -278,7 +344,9 @@ private:
   jay::address_state_machine addr_claimer_;
   jay::address_state_machine::st_claiming claim_state_;
   jay::address_state_machine::st_has_address has_address_state_;
-  boost::sml::sm<jay::address_state_machine> state_machine_;
+
+  address_claimer_logger logger_;
+  boost::sml::sm<jay::address_state_machine, boost::sml::logger<address_claimer_logger>> state_machine_;
   boost::asio::deadline_timer timeout_timer_;
 
   // Called when a local controller has claimed an address
@@ -289,6 +357,8 @@ private:
   J1939OnFrame on_frame_;
   // Called when an internal error occurs, used for debugging
   J1939OnError on_error_;
+
+  J1939OnLog on_log_;
 };
 
 

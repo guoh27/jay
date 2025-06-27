@@ -163,11 +163,23 @@ private:
    */
   bool no_address_available(const network &network) const { return network.full(); }
 
+  struct guard_no_address_available
+  {
+    static constexpr const char *tag = "no_address_available";
+    bool operator()(self &self, const network &network) const { return self.no_address_available(network); }
+  };
+
   /**
    * @brief Checks if addresses are available to claim
    * @param network to check for available addresses
    */
   bool address_available(const network &network) const { return !network.full(); }
+
+  struct guard_address_available
+  {
+    static constexpr const char *tag = "address_available";
+    bool operator()(self &self, const network &network) const { return self.address_available(network); }
+  };
 
   /**
    * @brief Check if our name has priority
@@ -176,6 +188,12 @@ private:
    * @return true if local name is less
    */
   bool address_priority(jay::name name) const { return name_ < name; }
+
+  struct guard_address_priority
+  {
+    static constexpr const char *tag = "address_priority";
+    bool operator()(self &self, jay::name name) const { return self.address_priority(name); }
+  };
 
   /**
    * @brief Checks if addresses conflict
@@ -208,6 +226,12 @@ private:
    */
   bool retry_allowed(const network &net) const { return name_.self_config_address() && address_available(net); }
 
+  struct guard_retry_allowed
+  {
+    static constexpr const char *tag = "retry_allowed";
+    bool operator()(self &self, const network &net) const { return self.retry_allowed(net); }
+  };
+
   /**
    * @brief Check name is disallowed retry claim
    *
@@ -216,6 +240,12 @@ private:
    * @return false
    */
   bool retry_disallowed(const network &net) const { return !retry_allowed(net); }
+
+  struct guard_retry_disallowed
+  {
+    static constexpr const char *tag = "retry_disallowed";
+    bool operator()(self &self, const network &net) const { return self.retry_disallowed(net); }
+  };
 
   /// State specific guards
 
@@ -230,6 +260,15 @@ private:
   {
     return address_conflict(claiming.address, address_claim.address) && address_priority(address_claim.name);
   }
+
+  struct guard_claiming_priority
+  {
+    static constexpr const char *tag = "claiming_priority";
+    bool operator()(self &self, st_claiming &claiming, const ev_address_claim &address_claim) const
+    {
+      return self.claiming_priority(claiming, address_claim);
+    }
+  };
 
   /**
    * @brief Check if claiming state has priority over address claim event and that
@@ -246,6 +285,16 @@ private:
            && address_available(network);
   }
 
+  struct guard_claiming_loss
+  {
+    static constexpr const char *tag = "claiming_loss";
+    bool
+      operator()(self &self, st_claiming &claiming, const ev_address_claim &address_claim, const network &network) const
+    {
+      return self.claiming_loss(claiming, address_claim, network);
+    }
+  };
+
   /**
    * @brief Check if claiming state loses priority over address claim event and
    * if there are no available addresses
@@ -261,6 +310,16 @@ private:
            && no_address_available(network);
   }
 
+  struct guard_claiming_failure
+  {
+    static constexpr const char *tag = "claiming_failure";
+    bool
+      operator()(self &self, st_claiming &claiming, const ev_address_claim &address_claim, const network &network) const
+    {
+      return self.claiming_failure(claiming, address_claim, network);
+    }
+  };
+
   /**
    * @brief Check if claimed state has priority over address claim event
    * @param has_address state
@@ -272,6 +331,15 @@ private:
   {
     return address_conflict(has_address.address, address_claim.address) && address_priority(address_claim.name);
   }
+
+  struct guard_claimed_priority
+  {
+    static constexpr const char *tag = "claimed_priority";
+    bool operator()(self &self, st_has_address &has_address, const ev_address_claim &address_claim) const
+    {
+      return self.claimed_priority(has_address, address_claim);
+    }
+  };
 
   /**
    * @brief Check if claimed state has priority over address claim event and that
@@ -288,6 +356,18 @@ private:
            && address_available(network);
   }
 
+  struct guard_claimed_loss
+  {
+    static constexpr const char *tag = "claimed_loss";
+    bool operator()(self &self,
+      st_has_address &has_address,
+      const ev_address_claim &address_claim,
+      const network &network) const
+    {
+      return self.claimed_loss(has_address, address_claim, network);
+    }
+  };
+
   /**
    * @brief Check if claimed state loses priority over address claim event and
    * if there are no available addresses
@@ -302,6 +382,18 @@ private:
     return address_change_required(address_claim.name, address_claim.address, has_address.address)
            && no_address_available(network);
   }
+
+  struct guard_claimed_failure
+  {
+    static constexpr const char *tag = "claimed_failure";
+    bool operator()(self &self,
+      st_has_address &has_address,
+      const ev_address_claim &address_claim,
+      const network &network) const
+    {
+      return self.claimed_failure(has_address, address_claim, network);
+    }
+  };
 
   /**
    * @brief Check if the claiming address is available in network
@@ -318,6 +410,15 @@ private:
     return network.claimable(claiming.address, name_) || network.get_address(name_) < J1939_IDLE_ADDR;
   }
 
+  struct guard_valid_address
+  {
+    static constexpr const char *tag = "valid_address";
+    bool operator()(self &self, st_claiming &claiming, const network &network) const
+    {
+      return self.valid_address(claiming, network);
+    }
+  };
+
   /**
    * @brief Check if that claiming address is not available in network
    * @param claiming state
@@ -333,10 +434,28 @@ private:
     return !network.claimable(claiming.address, name_) && network.get_address(name_) == J1939_IDLE_ADDR;
   }
 
+  struct guard_no_valid_address
+  {
+    static constexpr const char *tag = "no_valid_address";
+    bool operator()(self &self, st_claiming &claiming, const network &network) const
+    {
+      return self.no_valid_address(claiming, network);
+    }
+  };
+
   bool is_global_address_req(const ev_address_request &address_request) const
   {
     return address_request.destination_address == J1939_NO_ADDR;
   }
+
+  struct guard_is_global_address_req
+  {
+    static constexpr const char *tag = "is_global_address_req";
+    bool operator()(self &self, const ev_address_request &address_request) const
+    {
+      return self.is_global_address_req(address_request);
+    }
+  };
 
   /**
    * @brief Check if address request is valid
@@ -350,6 +469,15 @@ private:
   {
     return address_request.destination_address == has_address.address || is_global_address_req(address_request);
   }
+
+  struct guard_valid_address_request
+  {
+    static constexpr const char *tag = "valid_address_request";
+    bool operator()(self &self, st_has_address &has_address, const ev_address_request &address_request) const
+    {
+      return self.valid_address_request(has_address, address_request);
+    }
+  };
 
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
   //@                             Actions                            @//
@@ -367,6 +495,15 @@ private:
     claiming.address = ev_st_claim.pref_address;
   }
 
+  struct act_set_pref_address
+  {
+    static constexpr const char *tag = "act_set_pref_address";
+    void operator()(self &self, st_claiming &claiming, const ev_start_claim &ev_st_claim) const
+    {
+      self.set_pref_address(claiming, ev_st_claim);
+    }
+  };
+
   /**
    * @brief Set claimed address from claiming state to has_address state
    * @param src - claiming state
@@ -374,12 +511,24 @@ private:
    */
   void set_claimed_address(st_claiming &src, st_has_address &dst) { dst.address = src.address; }
 
+  struct act_set_claimed_address
+  {
+    static constexpr const char *tag = "set_claimed_address";
+    void operator()(self &self, st_claiming &src, st_has_address &dst) const { self.set_claimed_address(src, dst); }
+  };
+
   /**
    * @brief Set claimed address from claiming state to has_address state
    * @param src - claiming state
    * @param dst - has_address state
    */
   void set_claiming_address(st_has_address &src, st_claiming &dst) { dst.address = src.address; }
+
+  struct act_set_claiming_address
+  {
+    static constexpr const char *tag = "set_claiming_address";
+    void operator()(self &self, st_has_address &src, st_claiming &dst) const { self.set_claiming_address(src, dst); }
+  };
 
   /// Output actions
 
@@ -401,6 +550,12 @@ private:
     if (callbacks_.on_request) { callbacks_.on_request(); }
   }
 
+  struct act_send_request
+  {
+    static constexpr const char *tag = "send_request";
+    void operator()(self &self) const { self.send_request(); }
+  };
+
   /**
    * @brief Find an address and send address claim
    * @param claiming state
@@ -412,6 +567,15 @@ private:
     claim_address(claiming, network);
   }
 
+  struct act_begin_claiming_address
+  {
+    static constexpr const char *tag = "begin_claiming_address";
+    void operator()(self &self, st_claiming &claiming, const network &network) const
+    {
+      self.begin_claiming_address(claiming, network);
+    }
+  };
+
   /**
    * @brief Find an address and send address claim
    * @param claiming state
@@ -419,7 +583,7 @@ private:
    */
   void claim_address(st_claiming &claiming, const network &network) const
   {
-    claiming.address = network.find_address(name_, claiming.address, false);
+    claiming.address = network.find_address(name_, claiming.address);
     send_address_claim(claiming.address);
   }
 
@@ -429,11 +593,23 @@ private:
    */
   void send_claiming(st_claiming &claiming) const { send_address_claim(claiming.address); }
 
+  struct act_send_claiming
+  {
+    static constexpr const char *tag = "send_claiming";
+    void operator()(self &self, st_claiming &claiming) const { self.send_claiming(claiming); }
+  };
+
   /**
    * @brief Send address claim with address from has_address state
    * @param has_address state
    */
   void send_claimed(st_has_address &has_address) const { send_address_claim(has_address.address); }
+
+  struct act_send_claimed
+  {
+    static constexpr const char *tag = "send_claimed";
+    void operator()(self &self, st_has_address &has_address) const { self.send_claimed(has_address); }
+  };
 
   /**
    * @brief send cannot claim address message
@@ -444,6 +620,12 @@ private:
     if (callbacks_.on_cannot_claim) { callbacks_.on_cannot_claim(name_); }
   }
 
+  struct act_send_cannot_claim
+  {
+    static constexpr const char *tag = "send_cannot_claim";
+    void operator()(self &self) const { self.send_cannot_claim(); }
+  };
+
   /**
    * @brief Notify though callback which address has been claimed
    * @param has_address state
@@ -453,12 +635,24 @@ private:
     if (callbacks_.on_address) { callbacks_.on_address(name_, has_address.address); }
   };
 
+  struct act_notify_address_gain
+  {
+    static constexpr const char *tag = "notify_address_gain";
+    void operator()(self &self, st_has_address &has_address) const { self.notify_address_gain(has_address); }
+  };
+
   /**
    * @brief Notify though callback that address has been lost
    */
   void notify_address_loss()
   {
     if (callbacks_.on_lose_address) { callbacks_.on_lose_address(name_); }
+  };
+
+  struct act_notify_address_loss
+  {
+    static constexpr const char *tag = "notify_address_loss";
+    void operator()(self &self) const { self.notify_address_loss(); }
   };
 
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
@@ -476,32 +670,32 @@ public:
     return make_transition_table(
       *
       // No Address
-      state<st_no_address> + on_entry<_> / &self::send_request,
-      state<st_no_address> + event<ev_address_request>[&self::is_global_address_req] / &self::send_cannot_claim,
-      state<st_no_address> + event<ev_start_claim>[&self::address_available] / &self::set_pref_address = state<st_claiming>,
-      state<st_no_address> + event<ev_start_claim>[&self::no_address_available] / &self::send_cannot_claim,
+      state<st_no_address> + on_entry<_> / act_send_request{},
+      state<st_no_address> + event<ev_address_request>[guard_is_global_address_req{}] / act_send_cannot_claim{},
+      state<st_no_address> + event<ev_start_claim>[guard_address_available{}] / act_set_pref_address{} = state<st_claiming>,
+      state<st_no_address> + event<ev_start_claim>[guard_no_address_available{}] / act_send_cannot_claim{},
 
       // Claiming
-      state<st_claiming> + on_entry<_> / &self::begin_claiming_address,
-      state<st_claiming> + event<ev_address_claim>[&self::claiming_priority] / &self::send_claiming,
-      state<st_claiming> + event<ev_address_claim>[&self::claiming_loss] / &self::begin_claiming_address,
-      state<st_claiming> + event<ev_address_claim>[&self::claiming_failure] = state<st_address_lost>,
-      state<st_claiming> + event<ev_timeout>[&self::valid_address] / &self::set_claimed_address = state<st_has_address>,
-      state<st_claiming> + event<ev_timeout>[&self::no_valid_address] = state<st_no_address>,
+      state<st_claiming> + on_entry<_> / act_begin_claiming_address{},
+      state<st_claiming> + event<ev_address_claim>[guard_claiming_priority{}] / act_send_claiming{},
+      state<st_claiming> + event<ev_address_claim>[guard_claiming_loss{}] / act_begin_claiming_address{},
+      state<st_claiming> + event<ev_address_claim>[guard_claiming_failure{}] = state<st_address_lost>,
+      state<st_claiming> + event<ev_timeout>[guard_valid_address()] / act_set_claimed_address{} = state<st_has_address>,
+      state<st_claiming> + event<ev_timeout>[guard_no_valid_address{}] = state<st_no_address>,
 
       // Has Address
-      state<st_has_address> + on_entry<_> / &self::notify_address_gain,
-      state<st_has_address> + event<ev_address_request>[&self::valid_address_request] / &self::send_claimed,
-      state<st_has_address> + event<ev_address_claim>[&self::claimed_priority] / &self::send_claimed,
-      state<st_has_address> + event<ev_address_claim>[&self::claimed_loss] / &self::set_claiming_address = state<st_claiming>,
-      state<st_has_address> + event<ev_address_claim>[&self::claimed_failure] = state<st_address_lost>,
-      state<st_has_address> + boost::sml::on_exit<_> / &self::notify_address_loss,
+      state<st_has_address> + on_entry<_> / act_notify_address_gain{},
+      state<st_has_address> + event<ev_address_request>[guard_valid_address_request{}] / act_send_claimed{},
+      state<st_has_address> + event<ev_address_claim>[guard_claimed_priority{}] / act_send_claimed{},
+      state<st_has_address> + event<ev_address_claim>[guard_claimed_loss{}] / act_set_claiming_address{} = state<st_claiming>,
+      state<st_has_address> + event<ev_address_claim>[guard_claimed_failure{}] = state<st_address_lost>,
+      state<st_has_address> + boost::sml::on_exit<_> / act_notify_address_loss{},
 
       // Address Lost
-      state<st_address_lost> + on_entry<_> / &self::send_cannot_claim,
-      state<st_address_lost> + event<ev_address_request>[&self::is_global_address_req] / &self::send_cannot_claim,
-      state<st_address_lost> + event<ev_random_retry>[&self::retry_allowed] / &self::set_pref_address = state<st_claiming>,
-      state<st_address_lost> + event<ev_random_retry>[&self::retry_disallowed] / &self::send_cannot_claim = state<st_no_address>
+      state<st_address_lost> + on_entry<_> / act_send_cannot_claim{},
+      state<st_address_lost> + event<ev_address_request>[guard_is_global_address_req{}] / act_send_cannot_claim{},
+      state<st_address_lost> + event<ev_random_retry>[guard_retry_allowed{}] / act_set_pref_address{} = state<st_claiming>,
+      state<st_address_lost> + event<ev_random_retry>[guard_retry_disallowed{}] / act_send_cannot_claim{} = state<st_no_address>
     );
     // clang-format on
   }

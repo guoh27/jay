@@ -30,6 +30,7 @@ struct frame;
 using J1939OnError = std::function<void(const std::string, const boost::system::error_code)>;
 using J1939OnFrame = std::function<void(frame)>;
 using J1939ErrorHandler = std::function<void(const boost::system::error_code)>;
+using J1939OnLog = std::function<void(const std::string &)>;
 
 using payload = std::array<std::uint8_t, 8>;
 
@@ -76,7 +77,7 @@ struct frame
    * from a specific address
    * @return address request j1939 frame
    */
-  static frame make_address_request(std::uint8_t PS)
+  static frame make_address_request(jay::address_t PS)
   {
     return { frame_header(static_cast<std::uint8_t>(6), false, PF_REQUEST, PS, J1939_IDLE_ADDR, 3),
       { 0x00, 0xEE, 0x00 } };
@@ -88,7 +89,7 @@ struct frame
    * @param address to claim
    * @return address claim j1939 frame
    */
-  static frame make_address_claim(jay::name name, std::uint8_t address)
+  static frame make_address_claim(jay::name name, jay::address_t address)
   {
     /// TODO: Replace payload with name type
     return { frame_header(static_cast<std::uint8_t>(6), false, PF_ADDRESS_CLAIM, J1939_NO_ADDR, address, 8), name };

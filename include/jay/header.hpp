@@ -104,7 +104,7 @@ public:
    */
   frame_header(const priority_t priority,
     const pgn_t pgn,
-    const std::uint8_t source_address,
+    const jay::address_t source_address,
     const std::size_t payload_length = 0)
     : frame_header((std::clamp(static_cast<std::uint32_t>(priority), 0U, 7U) << 26) | (pgn << 8) | source_address,
       payload_length)
@@ -207,7 +207,7 @@ public:
    * @brief Set the source address of the can frame.
    * @param source_address of the frame
    */
-  frame_header &source_address(const std::uint8_t source_address)
+  frame_header &source_address(const jay::address_t source_address)
   {
     id((id() & ~ad_mask) | static_cast<std::uint32_t>(source_address));
     return *this;
@@ -283,9 +283,9 @@ public:
    * @brief Get the source address of the frame
    * @return 8 bit source address
    */
-  std::uint8_t source_address() const noexcept
+  jay::address_t source_address() const noexcept
   {
-    return static_cast<std::uint8_t>(header_.id());// Return bits 7 - 0, first byte
+    return static_cast<jay::address_t>(header_.id());// Return bits 7 - 0, first byte
   }
 
   /**

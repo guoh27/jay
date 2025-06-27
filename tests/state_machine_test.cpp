@@ -9,8 +9,8 @@
 
 #include <gtest/gtest.h>
 
-#include "jay/network.hpp"
 #include "jay/address_state_machine.hpp"
+#include "jay/network.hpp"
 
 // C++
 #include <queue>
@@ -29,10 +29,11 @@ protected:
   {
     /// Cout used for debugging
     addr_claimer.set_callbacks(jay::address_state_machine::callbacks{ [this](jay::name name, uint8_t address) -> void {
-                                                                 // std::cout << std::hex << (name) << " gained address:
-                                                                 // " << std::hex << address << std::endl;
-                                                                 j1939_network.insert(name, address);
-                                                               },
+                                                                       // std::cout << std::hex << (name) << " gained
+                                                                       // address: " << std::hex << address <<
+                                                                       // std::endl;
+                                                                       j1939_network.insert(name, address);
+                                                                     },
       [this](jay::name name) -> void {
         // std::cout << std::hex << (name) << " lost address" << std::endl;
         j1939_network.release((name));

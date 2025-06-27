@@ -71,17 +71,17 @@ typedef std::uint32_t pgn_t;
  * Highest usable unique addresses (253), a total of 254
  * addresses can exist in a network 0 - 253
  */
-constexpr std::uint8_t J1939_MAX_UNICAST_ADDR{ 0xFDU };
+constexpr jay::address_t J1939_MAX_UNICAST_ADDR{ 0xFDU };
 
 /*
  * Idle or null address
  */
-constexpr std::uint8_t J1939_IDLE_ADDR{ 0xFEU };
+constexpr jay::address_t J1939_IDLE_ADDR{ 0xFEU };
 
 /*
  * Broadcast / global or no address
  */
-constexpr std::uint8_t J1939_NO_ADDR{ 0xFFU };
+constexpr jay::address_t J1939_NO_ADDR{ 0xFFU };
 
 /*
  *

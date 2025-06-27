@@ -18,7 +18,7 @@
 #include <unordered_map>//std::unordered_map
 
 // Local
-#include "name.hpp"// name, jay globals, and std::uint8_t
+#include "name.hpp"// name, jay globals, and jay::address_t
 
 namespace jay {
 
@@ -113,35 +113,53 @@ public:
    * @return false if no name was inserted
    * @return false if name and address was the same
    */
-  bool insert(jay::name name, std::uint8_t address)
+  bool insert(jay::name name, jay::address_t address)
   {
-    // Insert new controllers that dont have an address yet
+    std::scoped_lock lk{ network_mtx_ };
+
+    // 1. If the given address is not a valid unicast address,
+    //    just keep the device in IDLE state.
     if (address > J1939_MAX_UNICAST_ADDR) {
-      if (!in_network(name)) {
-        std::scoped_lock lock{ network_mtx_ };
-        name_addr_map_[name] = J1939_IDLE_ADDR;
-        return true;
-      }
-      return false;
+      auto [it, _] = name_addr_map_.try_emplace(name, J1939_IDLE_ADDR);
+      // Remove the old reverse mapping (if any).
+      addr_name_map_.erase(it->second);
+      it->second = J1939_IDLE_ADDR;
+      return true;
     }
 
-    // Already exists
-    if (match(name, address)) { return false; }
+    // Helper lambda: move a device to IDLE state.
+    auto set_idle = [&](jay::name n) {
+      addr_name_map_.erase(name_addr_map_[n]);
+      name_addr_map_[n] = J1939_IDLE_ADDR;
+    };
 
-    std::scoped_lock lock{ network_mtx_ };
-    if (auto it = addr_name_map_.find(address);
-        it != addr_name_map_.end()) {// Their name is less than ours cant claim address
-      if (it->second < name) {// Register device without an address
-        name_addr_map_[name] = J1939_IDLE_ADDR;
-        return true;
-      }
-      // Address is larger can claim address, clear existing device address
-      name_addr_map_[it->second] = J1939_IDLE_ADDR;
+    // Helper lambda: let a device claim @address and trigger the callback.
+    auto claim = [&](jay::name n) {
+      addr_name_map_.erase(name_addr_map_[n]);// remove old reverse entry
+      name_addr_map_[n] = address;// forward map
+      addr_name_map_[address] = n;// reverse map
+      if (on_new_name_) on_new_name_(n, address);
+    };
+
+    // 2. Check whether the target address is already occupied.
+    auto addr_it = addr_name_map_.find(address);
+    bool occupied = addr_it != addr_name_map_.end();
+    jay::name conflict = occupied ? addr_it->second : jay::name{};
+
+    // 3. If the address is occupied and we have *lower* priority,
+    //    we must stay idle and report failure.
+    if (occupied && name > conflict) {// lower priority (larger value)
+      name_addr_map_.try_emplace(name, J1939_IDLE_ADDR);
+      return false;// notify caller: claim failed
     }
 
-    addr_name_map_[address] = name;
-    name_addr_map_[name] = address;
-    if (on_new_name_) { on_new_name_(name, address); }
+    // 4. We are allowed to claim this address.
+    name_addr_map_.try_emplace(name, J1939_IDLE_ADDR);// ensure entry exists
+    claim(name);
+
+    // 5. If someone else was using the address, put them into IDLE state.
+    if (occupied && conflict != name) set_idle(conflict);
+
     return true;
   }
 
@@ -194,7 +212,7 @@ public:
    * @return false if a controller has the address
    * @return false if address provided was a global address
    */
-  bool available(std::uint8_t address) const
+  bool available(jay::address_t address) const
   {
     if (address > J1939_MAX_UNICAST_ADDR) return false;
     std::shared_lock lock{ network_mtx_ };
@@ -211,7 +229,7 @@ public:
    * @return false if name on address has higher priority
    * @todo should global address be an assert?
    */
-  bool claimable(std::uint8_t address, jay::name name) const
+  bool claimable(jay::address_t address, jay::name name) const
   {
     if (address > J1939_MAX_UNICAST_ADDR) return false;
     std::shared_lock lock{ network_mtx_ };
@@ -237,7 +255,7 @@ public:
    * @return true if address and controller are paired
    * @return false if address or ctrl are not paired
    */
-  bool match(jay::name name, std::uint8_t address)
+  bool match(jay::name name, jay::address_t address)
   {
     /// TODO: Should it also check the other way, that address map has controller?
     std::shared_lock lock{ network_mtx_ };
@@ -271,7 +289,7 @@ public:
    * @throw
    * @return name or nullopt if address is not used
    */
-  std::optional<jay::name> get_name(std::uint8_t address) const
+  std::optional<jay::name> get_name(jay::address_t address) const
   {
     /// NOTE: Dont need to check global addresses as they cant be inserted.
     std::shared_lock lock{ network_mtx_ };
@@ -285,7 +303,7 @@ public:
    * @return address of the controller
    * @return J1939_NO_ADDR if not in the network
    */
-  std::uint8_t get_address(const jay::name name) const
+  jay::address_t get_address(const jay::name name) const
   {
     std::shared_lock lock{ network_mtx_ };
     if (auto it = name_addr_map_.find(name); it != name_addr_map_.end()) { return it->second; }
@@ -308,15 +326,21 @@ public:
    * Search the network empty addresses
    * @param name of the controller application looking for address
    * @param preferred_address to start search from, clamped to between 0 - 253
-   * @param force the taking of an address from another ecu
    * @return empty address, if no addresses were available J1939_NO_ADDR is returned
    */
-  std::uint8_t find_address(jay::name name, std::uint8_t preferred_address = 0, bool force = false) const
+  jay::address_t find_address(jay::name name, jay::address_t preferred_address = 0) const
   {
-    preferred_address = std::clamp(preferred_address, static_cast<std::uint8_t>(0), J1939_MAX_UNICAST_ADDR);
+    preferred_address = std::clamp(preferred_address, static_cast<jay::address_t>(0), J1939_MAX_UNICAST_ADDR);
     std::shared_lock lock{ network_mtx_ };
-    auto address = search(name, preferred_address, J1939_IDLE_ADDR, force);
-    if (address == J1939_NO_ADDR) { address = search(name, 0, preferred_address, force); }
+    if (!name.self_config_address()) {
+      auto pair = addr_name_map_.find(preferred_address);
+      if (pair == addr_name_map_.end()) { return preferred_address; }
+      if (name <= pair->second) { return preferred_address; }// we have smaller(higher priority) name
+      return J1939_NO_ADDR;
+    }
+
+    auto address = search(name, preferred_address, J1939_IDLE_ADDR);
+    if (address == J1939_NO_ADDR) { address = search(name, 0, preferred_address); }
     return address;
     // if no address was found above the preferred address, check bellow
   }
@@ -334,16 +358,15 @@ private:
    * Search the network empty addresses
    * @param name of the controller application looking for address
    * @param preferred_address to start search from
-   * @param limit of the address search
-   * @param force the taking of an address from another ecu
+   * @param end_address limit of the address search
    * @return empty address, if no addresses were available J1939_NO_ADDR is returned
    */
-  std::uint8_t search(jay::name name, std::uint8_t start_address, std::uint8_t end_address, bool force) const
+  jay::address_t search(jay::name name, jay::address_t start_address, jay::address_t end_address) const
   {
-    for (std::uint8_t address = start_address; address < end_address; address++) {
+    for (jay::address_t address = start_address; address < end_address; address++) {
       auto pair = addr_name_map_.find(address);
       if (pair == addr_name_map_.end()) { return address; }
-      if (pair->second > name && force) { return address; }// Claim address is we have smaller name
+      if (pair->second == name) { return address; }// reuse old address
     }
     return J1939_NO_ADDR;
   }
@@ -356,8 +379,8 @@ private:
   /// but would need somewhere for names with null address
   /// so overall it might not be worth it
 
-  std::unordered_map<jay::name, std::uint8_t, jay::name::hash> name_addr_map_{};
-  std::unordered_map<std::uint8_t, jay::name> addr_name_map_{};
+  std::unordered_map<jay::name, jay::address_t, jay::name::hash> name_addr_map_{};
+  std::unordered_map<jay::address_t, jay::name> addr_name_map_{};
 
   mutable std::shared_mutex network_mtx_{};
 };

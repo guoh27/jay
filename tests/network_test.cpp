@@ -143,8 +143,8 @@ TEST(Jay_Network_Test, Jay_Network_Search_Test)
   ASSERT_TRUE(j1939_network.insert(controller, address));
 
   // Claim first address
-  ASSERT_EQ(j1939_network.find_address(0, 0, true), 0);
-  ASSERT_EQ(j1939_network.find_address(controller, 0, true), address + 1);
+  ASSERT_EQ(j1939_network.find_address(0, 0), 0);
+  ASSERT_EQ(j1939_network.find_address(controller, 0), address + 1);
 }
 
 TEST(Jay_Network_Test, Jay_Network_Get_Name_Set_Test)
