@@ -69,7 +69,11 @@ protected:
   void TearDown() override { j1939_network.clear(); }
 
 public:
-  uint64_t local_name{ 0xFFU };
+  jay::name local_name = [] {
+    jay::name n{ 0xFFU };
+    n.self_config_address(1);
+    return n;
+  }();
   uint8_t address{ 0xAAU };
   jay::network j1939_network{ "vcan0" };
   std::queue<std::pair<jay::name, std::uint8_t>> claim_queue{};

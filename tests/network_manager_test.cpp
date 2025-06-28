@@ -103,6 +103,11 @@ TEST_F(NetworkManagerTest, Jay_Network_Manager_Test)
   frame_queue.pop();
   frame_queue.pop();
 
+  // address_one and address_two should have been added to the network
+  ASSERT_EQ(new_controller_queue.size(), 2);
+  new_controller_queue.pop();
+  new_controller_queue.pop();
+
   for (std::uint8_t i = 0; i < 50; i++) {
     // Should insert into network and require current devices to change name
     for (auto &claimer : address_claimers) claimer->process(jay::frame::make_address_claim(jay::name{ i }, i));
@@ -111,14 +116,7 @@ TEST_F(NetworkManagerTest, Jay_Network_Manager_Test)
 
     // A new controller is added in callback
 
-    std::cout << "controllers " << new_controller_queue.size() << "\n";
-
-    while (new_controller_queue.size() > 0) {
-      std::cout << jay::name_t(new_controller_queue.front().first) << " " << int(new_controller_queue.front().second)
-                << std::endl;
-      new_controller_queue.pop();
-    }
-
+    // Validate that a single controller was queued
     ASSERT_EQ(new_controller_queue.size(), 1);
     auto new_controller = new_controller_queue.front();
     ASSERT_EQ(new_controller.first, jay::name{ static_cast<std::uint64_t>(i) });
@@ -126,8 +124,9 @@ TEST_F(NetworkManagerTest, Jay_Network_Manager_Test)
     new_controller_queue.pop();
 
     // One of our controllers lose an address
-    ASSERT_EQ(frame_queue.size(), 1);
-    frame_queue.pop();
+    size_t expected_frames = (i < 2) ? 2 : 0;
+    ASSERT_EQ(frame_queue.size(), expected_frames);
+    while (!frame_queue.empty()) { frame_queue.pop(); }
   }
 
   /// TODO: Fill network?

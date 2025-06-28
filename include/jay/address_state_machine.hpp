@@ -443,6 +443,20 @@ private:
     }
   };
 
+  bool valid_claiming_request(st_claiming &claiming, const ev_address_request &address_request) const
+  {
+    return address_request.destination_address == claiming.address || is_global_address_req(address_request);
+  }
+
+  struct guard_valid_claiming_request
+  {
+    static constexpr const char *tag = "valid_claiming_request";
+    bool operator()(self &self, st_claiming &claiming, const ev_address_request &address_request) const
+    {
+      return self.valid_claiming_request(claiming, address_request);
+    }
+  };
+
   bool is_global_address_req(const ev_address_request &address_request) const
   {
     return address_request.destination_address == J1939_NO_ADDR;
@@ -682,6 +696,7 @@ public:
       state<st_claiming> + event<ev_address_claim>[guard_claiming_failure{}] = state<st_address_lost>,
       state<st_claiming> + event<ev_timeout>[guard_valid_address()] / act_set_claimed_address{} = state<st_has_address>,
       state<st_claiming> + event<ev_timeout>[guard_no_valid_address{}] = state<st_no_address>,
+      state<st_claiming> + event<ev_address_request>[guard_valid_claiming_request{}] / act_send_claiming{},
 
       // Has Address
       state<st_has_address> + on_entry<_> / act_notify_address_gain{},
