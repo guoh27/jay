@@ -26,7 +26,6 @@ protected:
   {
     j1939_network.on_new_name_callback([this](jay::name name, std::uint8_t addr) {
       new_controller_queue.push({ name, addr });
-      std::cout << jay::name_t(name) << " " << int(addr) << std::endl;
     });
   }
 

@@ -29,7 +29,7 @@ protected:
     addr_mng.on_error(
       [](std::string what, auto error) -> void { std::cout << what << " : " << error.message() << std::endl; });
 
-    addr_mng.on_log([](const std::string &msg) { std::cout << msg << std::endl; });
+    // addr_mng.on_log([](const std::string &msg) { std::cout << msg << std::endl; });
   }
 
   //
@@ -48,7 +48,11 @@ public:
   std::queue<jay::frame> frame_queue{};
 
   boost::asio::io_context io{};
-  jay::name local_name{ 0xFFFFFFFFFFFFFFFFU };
+  jay::name local_name = [] {
+    jay::name n{ 0xFFU };
+    n.self_config_address(1);
+    return n;
+  }();
   jay::network j1939_network{ "vcan0" };
   jay::address_claimer addr_mng{ io, local_name, j1939_network };
 };
