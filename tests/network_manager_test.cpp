@@ -26,20 +26,18 @@ protected:
   {
     j1939_network.on_new_name_callback([this](jay::name name, std::uint8_t addr) {
       new_controller_queue.push({ name, addr });
+      std::cout << jay::name_t(name) << " " << int(addr) << std::endl;
     });
   }
 
-  //
-  virtual ~NetworkManagerTest() {}
+  ~NetworkManagerTest() override = default;
 
-  //
-  virtual void SetUp() override
+  void SetUp() override
   {
     // frame_queue = std::queue<jay::frame>{};
   }
 
-  //
-  virtual void TearDown() override { j1939_network.clear(); }
+  void TearDown() override { j1939_network.clear(); }
 
 public:
   std::queue<std::pair<jay::name, std::uint8_t>> new_controller_queue{};
@@ -57,18 +55,12 @@ TEST_F(NetworkManagerTest, Jay_Network_Manager_Test)
 
   jay::address_claimer address_one{ context, { 0xAFFU }, j1939_network };
 
-  address_one.on_frame([this, &frame_queue](jay::frame frame) -> void {
-    // std::cout << "Sending: " << frame.to_string() << std::endl;
-    frame_queue.push(frame);
-  });
+  address_one.on_frame([&frame_queue](jay::frame frame) -> void { frame_queue.push(frame); });
   address_one.on_error(
     [](std::string what, auto error) -> void { std::cout << what << " : " << error.message() << std::endl; });
 
   jay::address_claimer address_two{ context, { 0xBFFU }, j1939_network };
-  address_two.on_frame([this, &frame_queue](jay::frame frame) -> void {
-    // std::cout << "Sending: " << frame.to_string() << std::endl;
-    frame_queue.push(frame);
-  });
+  address_two.on_frame([&frame_queue](jay::frame frame) -> void { frame_queue.push(frame); });
   address_two.on_error(
     [](std::string what, auto error) -> void { std::cout << what << " : " << error.message() << std::endl; });
 
@@ -118,6 +110,15 @@ TEST_F(NetworkManagerTest, Jay_Network_Manager_Test)
     context.restart();
 
     // A new controller is added in callback
+
+    std::cout << "controllers " << new_controller_queue.size() << "\n";
+
+    while (new_controller_queue.size() > 0) {
+      std::cout << jay::name_t(new_controller_queue.front().first) << " " << int(new_controller_queue.front().second)
+                << std::endl;
+      new_controller_queue.pop();
+    }
+
     ASSERT_EQ(new_controller_queue.size(), 1);
     auto new_controller = new_controller_queue.front();
     ASSERT_EQ(new_controller.first, jay::name{ static_cast<std::uint64_t>(i) });

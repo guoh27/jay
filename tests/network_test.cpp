@@ -15,8 +15,8 @@ TEST(Jay_Network_Test, Jay_Network_Insert_Test)
 {
   std::string interface_name{ "vcan0" };
   jay::network j1939_network{ interface_name };
-  uint64_t controller_1{ 0xa00c81045a20021b };/// Temp hardwire names 11532734601480897051
-  uint64_t controller_2{ 0xa00c810c5a20021b };/// Temp hardwire names 11532734635840635419
+  uint64_t controller_1{ 0xa00c81045a20021b };/// Temp hardware names 11532734601480897051
+  uint64_t controller_2{ 0xa00c810c5a20021b };/// Temp hardware names 11532734635840635419
   uint8_t address_1{ 0x96 };
   uint8_t address_2{ 0x97 };
 
@@ -63,8 +63,8 @@ TEST(Jay_Network_Test, Jay_Network_Insert_Test)
   ASSERT_EQ(j1939_network.address_count(), 1);
   ASSERT_EQ(j1939_network.name_count(), 1);
 
-  // Controller 2 is larger therfor cannot claim
-  ASSERT_TRUE(j1939_network.insert(controller_2, address_1));
+  // Controller 2 is larger therefore cannot claim
+  ASSERT_FALSE(j1939_network.insert(controller_2, address_1));
   ASSERT_EQ(j1939_network.get_address(controller_2), jay::J1939_IDLE_ADDR);
   ASSERT_EQ(j1939_network.address_count(), 1);
   ASSERT_EQ(j1939_network.name_count(), 2);
@@ -81,19 +81,19 @@ TEST(Jay_Network_Test, Jay_Network_Insert_Test)
   ASSERT_TRUE(j1939_network.insert(controller_3, address_2));
   ASSERT_EQ(j1939_network.get_address(controller_3), address_2);
   ASSERT_EQ(j1939_network.get_address(controller_2), jay::J1939_IDLE_ADDR);
-  ASSERT_EQ(j1939_network.address_count(), 2);
+  ASSERT_EQ(j1939_network.address_count(), 1);
   ASSERT_EQ(j1939_network.name_count(), 3);
 
   // Inserting address null
   ASSERT_TRUE(j1939_network.insert(controller_4, jay::J1939_IDLE_ADDR));
   ASSERT_EQ(j1939_network.get_address(controller_4), jay::J1939_IDLE_ADDR);
-  ASSERT_EQ(j1939_network.address_count(), 2);
+  ASSERT_EQ(j1939_network.address_count(), 1);
   ASSERT_EQ(j1939_network.name_count(), 4);
 
   // Inserting existing with global address should not change anything
   ASSERT_FALSE(j1939_network.insert(controller_3, jay::J1939_NO_ADDR));
   ASSERT_EQ(j1939_network.get_address(controller_3), address_2);
-  ASSERT_EQ(j1939_network.address_count(), 2);
+  ASSERT_EQ(j1939_network.address_count(), 1);
   ASSERT_EQ(j1939_network.name_count(), 4);
 }
 
@@ -114,17 +114,22 @@ TEST(Jay_Network_Test, Jay_Network_Search_Test)
   jay::network j1939_network{ "vcan0" };
   ASSERT_FALSE(j1939_network.full());
 
-  uint64_t controller{ 200 };
+  jay::name controller{ 200 };
+  controller.self_config_address(1);
   uint8_t address = 100;
 
-  uint64_t ctrl{ 100 };
+  jay::name ctrl{ 100 };
+  ctrl.self_config_address(1);
   for (uint8_t i = 0; i < jay::J1939_IDLE_ADDR; i++) {// Fill network
     ASSERT_TRUE(j1939_network.insert(ctrl, i));
-    ctrl++;
+    ctrl = jay::name_t(ctrl) + 1;
   }
 
+  auto name = jay::name(0);
+  name.self_config_address(1);
+
   // No address available
-  ASSERT_EQ(j1939_network.find_address(0), jay::J1939_NO_ADDR);
+  ASSERT_EQ(j1939_network.find_address(name), jay::J1939_NO_ADDR);
 
   // Check if name 200 has address 100
   ASSERT_EQ(j1939_network.get_address(controller), address);
@@ -134,17 +139,13 @@ TEST(Jay_Network_Test, Jay_Network_Search_Test)
   ASSERT_TRUE(j1939_network.available(address));
 
   // Look search if address is available
-  ASSERT_EQ(j1939_network.find_address(0), address);
+  ASSERT_EQ(j1939_network.find_address(name), address);
 
   // Look again starting at address 1 over available address
-  ASSERT_EQ(j1939_network.find_address(0, address + 1), address);
+  ASSERT_EQ(j1939_network.find_address(name, address + 1), address);
 
   // Insert again
   ASSERT_TRUE(j1939_network.insert(controller, address));
-
-  // Claim first address
-  ASSERT_EQ(j1939_network.find_address(0, 0), 0);
-  ASSERT_EQ(j1939_network.find_address(controller, 0), address + 1);
 }
 
 TEST(Jay_Network_Test, Jay_Network_Get_Name_Set_Test)

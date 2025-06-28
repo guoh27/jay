@@ -315,6 +315,7 @@ private:
   jay::network &network_;
 
   // Internal
+  J1939OnLog on_log_;
 
   jay::address_state_machine addr_claimer_;
   jay::address_state_machine::st_claiming claim_state_;
@@ -332,8 +333,6 @@ private:
   J1939OnFrame on_frame_;
   // Called when an internal error occurs, used for debugging
   J1939OnError on_error_;
-
-  J1939OnLog on_log_;
 };
 
 

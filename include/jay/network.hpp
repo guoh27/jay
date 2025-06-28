@@ -117,47 +117,72 @@ public:
   {
     std::scoped_lock lk{ network_mtx_ };
 
-    // 1. If the given address is not a valid unicast address,
-    //    just keep the device in IDLE state.
-    if (address > J1939_MAX_UNICAST_ADDR) {
-      auto [it, _] = name_addr_map_.try_emplace(name, J1939_IDLE_ADDR);
-      // Remove the old reverse mapping (if any).
-      addr_name_map_.erase(it->second);
-      it->second = J1939_IDLE_ADDR;
-      return true;
-    }
+    /* --------------------------------------------------------------------
+     *  Detect first-time appearance and remember the previous address
+     * ------------------------------------------------------------------ */
+    auto prev_it = name_addr_map_.find(name);
+    bool first_time = (prev_it == name_addr_map_.end());
+    jay::address_t prev_addr = first_time ? J1939_IDLE_ADDR : prev_it->second;
 
-    // Helper lambda: move a device to IDLE state.
+    /* --------------------------------------------------------------------
+     *  λ: force a device into the IDLE state (addr = 255)
+     * ------------------------------------------------------------------ */
     auto set_idle = [&](jay::name n) {
       addr_name_map_.erase(name_addr_map_[n]);
       name_addr_map_[n] = J1939_IDLE_ADDR;
     };
 
-    // Helper lambda: let a device claim @address and trigger the callback.
-    auto claim = [&](jay::name n) {
-      addr_name_map_.erase(name_addr_map_[n]);// remove old reverse entry
-      name_addr_map_[n] = address;// forward map
-      addr_name_map_[address] = n;// reverse map
-      if (on_new_name_) on_new_name_(n, address);
-    };
-
-    // 2. Check whether the target address is already occupied.
-    auto addr_it = addr_name_map_.find(address);
-    bool occupied = addr_it != addr_name_map_.end();
-    jay::name conflict = occupied ? addr_it->second : jay::name{};
-
-    // 3. If the address is occupied and we have *lower* priority,
-    //    we must stay idle and report failure.
-    if (occupied && name > conflict) {// lower priority (larger value)
-      name_addr_map_.try_emplace(name, J1939_IDLE_ADDR);
-      return false;// notify caller: claim failed
+    /* --------------------------------------------------------------------
+     *  0) Address is NO_ADDR (254) or IDLE_ADDR (255) → keep device idle
+     *      – never invokes on_new_name_
+     * ------------------------------------------------------------------ */
+    if (address > J1939_MAX_UNICAST_ADDR) {// 254 or 255
+      if (first_time) {
+        name_addr_map_[name] = J1939_IDLE_ADDR;// create idle entry
+        return true;
+      } else if (address == J1939_IDLE_ADDR) {
+        set_idle(name);// ensure IDLE
+        return true;
+      }
+      return false;
     }
 
-    // 4. We are allowed to claim this address.
-    name_addr_map_.try_emplace(name, J1939_IDLE_ADDR);// ensure entry exists
+    /* --------------------------------------------------------------------
+     *  λ: claim the requested unicast address and optionally notify
+     * ------------------------------------------------------------------ */
+    bool notify = first_time || (prev_addr != address);
+
+    auto claim = [&, notify](jay::name n) {
+      addr_name_map_.erase(name_addr_map_[n]);// remove old reverse entry
+      name_addr_map_[n] = address;// forward  map
+      addr_name_map_[address] = n;// reverse  map
+      if (notify && on_new_name_) on_new_name_(n, address);
+    };
+
+    /* --------------------------------------------------------------------
+     *  1) Check whether the target address is already occupied
+     * ------------------------------------------------------------------ */
+    auto addr_it = addr_name_map_.find(address);
+    bool occupied = (addr_it != addr_name_map_.end());
+    jay::name conflict = occupied ? addr_it->second : jay::name{};
+
+    /* --------------------------------------------------------------------
+     *  2) Lower-priority node cannot take an occupied address → fail
+     * ------------------------------------------------------------------ */
+    if (occupied && name > conflict) {// higher numeric value = lower priority
+      name_addr_map_.try_emplace(name, J1939_IDLE_ADDR);
+      return false;
+    }
+
+    /* --------------------------------------------------------------------
+     *  3) Address can be claimed
+     * ------------------------------------------------------------------ */
+    name_addr_map_.try_emplace(name, J1939_IDLE_ADDR);// ensure map entry
     claim(name);
 
-    // 5. If someone else was using the address, put them into IDLE state.
+    /* --------------------------------------------------------------------
+     *  4) If someone else had this address, send them to IDLE
+     * ------------------------------------------------------------------ */
     if (occupied && conflict != name) set_idle(conflict);
 
     return true;
@@ -328,7 +353,7 @@ public:
    * @param preferred_address to start search from, clamped to between 0 - 253
    * @return empty address, if no addresses were available J1939_NO_ADDR is returned
    */
-  jay::address_t find_address(jay::name name, jay::address_t preferred_address = 0) const
+  jay::address_t find_address(jay::name name, jay::address_t preferred_address = 128) const
   {
     preferred_address = std::clamp(preferred_address, static_cast<jay::address_t>(0), J1939_MAX_UNICAST_ADDR);
     std::shared_lock lock{ network_mtx_ };
@@ -337,11 +362,12 @@ public:
       if (pair == addr_name_map_.end()) { return preferred_address; }
       if (name <= pair->second) { return preferred_address; }// we have smaller(higher priority) name
       return J1939_NO_ADDR;
+    } else {
+      // search an empty address without priority compare
+      auto address = search(name, preferred_address, J1939_IDLE_ADDR);
+      if (address == J1939_NO_ADDR) { address = search(name, 0, preferred_address); }
+      return address;
     }
-
-    auto address = search(name, preferred_address, J1939_IDLE_ADDR);
-    if (address == J1939_NO_ADDR) { address = search(name, 0, preferred_address); }
-    return address;
     // if no address was found above the preferred address, check bellow
   }
 
