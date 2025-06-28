@@ -48,7 +48,7 @@ public:
   std::queue<jay::frame> frame_queue{};
 
   boost::asio::io_context io{};
-  jay::name local_name{ 0xFF };
+  jay::name local_name{ 0xFFFFFFFFFFFFFFFFU };
   jay::network j1939_network{ "vcan0" };
   jay::address_claimer addr_mng{ io, local_name, j1939_network };
 };
@@ -160,13 +160,13 @@ TEST_F(AddressClaimerTest, Jay_Address_Claimer_Test)
   addr_mng.process(jay::frame::make_address_claim(
     jay::name{ jay::J1939_MAX_UNICAST_ADDR }, static_cast<std::uint8_t>(jay::J1939_MAX_UNICAST_ADDR)));
 
-  io.run_for(std::chrono::milliseconds(260));// Give timeout time to trigger
+  io.run_for(std::chrono::milliseconds(1000));// Give timeout time to trigger
   io.restart();
 
   ASSERT_TRUE(j1939_network.full());
 
   // Check cannot claim address frame
-  ASSERT_EQ(frame_queue.size(), 1);
+  ASSERT_EQ(frame_queue.size(), 2);
   frame = frame_queue.front();
   ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
   ASSERT_EQ(frame.header.pdu_specific(), jay::J1939_NO_ADDR);

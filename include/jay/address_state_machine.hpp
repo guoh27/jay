@@ -670,7 +670,7 @@ public:
     return make_transition_table(
       *
       // No Address
-      state<st_no_address> + on_entry<_> / act_send_request{},
+      state<st_no_address> + on_entry<_>[guard_address_available{}] / act_send_request{},
       state<st_no_address> + event<ev_address_request>[guard_is_global_address_req{}] / act_send_cannot_claim{},
       state<st_no_address> + event<ev_start_claim>[guard_address_available{}] / act_set_pref_address{} = state<st_claiming>,
       state<st_no_address> + event<ev_start_claim>[guard_no_address_available{}] / act_send_cannot_claim{},

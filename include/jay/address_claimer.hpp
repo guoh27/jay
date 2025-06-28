@@ -25,31 +25,6 @@
 #include "network.hpp"
 
 namespace jay {
-
-namespace detail {
-  template<class T> struct is_on_exit : std::false_type
-  {
-  };
-  template<class S, class E> struct is_on_exit<boost::ext::sml::v1_1_11::back::on_exit<S, E>> : std::true_type
-  {
-  };
-
-  template<class T> struct is_on_entry : std::false_type
-  {
-  };
-  template<class S, class E> struct is_on_entry<boost::ext::sml::v1_1_11::back::on_entry<S, E>> : std::true_type
-  {
-  };
-
-  // trait to detect static constexpr `tag` inside an action type
-  template<class, class = void> struct has_static_tag : std::false_type
-  {
-  };
-  template<class T> struct has_static_tag<T, std::void_t<decltype(T::tag)>> : std::true_type
-  {
-  };
-}// namespace detail
-
 /**
  * @brief Wrapper class for sml state machine that implements timeout events
  * as i have not found a way to implement timeouts internally in address claimer
