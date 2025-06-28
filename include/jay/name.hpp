@@ -309,17 +309,26 @@ public:
   //@                            Overloads                           @//
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
 
-  bool operator<(const name &rhs) const noexcept { return (name_ < rhs.name_); }
+  bool operator<(const name &rhs) const noexcept
+  {
+    return (static_cast<name_t>(name_) & ~slf_cfg_addr_mask) < (static_cast<name_t>(rhs.name_) & ~slf_cfg_addr_mask);
+  }
 
-  bool operator>(const name &rhs) const noexcept { return (name_ > rhs.name_); }
+  bool operator>(const name &rhs) const noexcept
+  {
+    return (static_cast<name_t>(name_) & ~slf_cfg_addr_mask) > (static_cast<name_t>(rhs.name_) & ~slf_cfg_addr_mask);
+  }
 
-  bool operator==(const name &rhs) const noexcept { return (name_ == rhs.name_); }
+  bool operator==(const name &rhs) const noexcept
+  {
+    return (static_cast<name_t>(name_) & ~slf_cfg_addr_mask) == (static_cast<name_t>(rhs.name_) & ~slf_cfg_addr_mask);
+  }
 
-  bool operator<(const name_t rhs) const noexcept { return (name_ < rhs); }
+  bool operator<(const name_t rhs) const noexcept { return *this < name(rhs); }
 
-  bool operator>(const name_t rhs) const noexcept { return (name_ > rhs); }
+  bool operator>(const name_t rhs) const noexcept { return *this > name(rhs); }
 
-  bool operator==(const name_t rhs) const noexcept { return (name_ == rhs); }
+  bool operator==(const name_t rhs) const noexcept { return *this == name(rhs); }
 
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
   //@                        Hash Function                           @//

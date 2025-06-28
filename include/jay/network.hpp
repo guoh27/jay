@@ -153,7 +153,6 @@ public:
     bool notify = first_time || (prev_addr != address);
 
     auto claim = [&, notify](jay::name n) {
-      addr_name_map_.erase(name_addr_map_[n]);// remove old reverse entry
       name_addr_map_[n] = address;// forward  map
       addr_name_map_[address] = n;// reverse  map
       if (notify && on_new_name_) on_new_name_(n, address);
@@ -178,12 +177,13 @@ public:
      *  3) Address can be claimed
      * ------------------------------------------------------------------ */
     name_addr_map_.try_emplace(name, J1939_IDLE_ADDR);// ensure map entry
-    claim(name);
 
     /* --------------------------------------------------------------------
      *  4) If someone else had this address, send them to IDLE
      * ------------------------------------------------------------------ */
     if (occupied && conflict != name) set_idle(conflict);
+
+    claim(name);
 
     return true;
   }

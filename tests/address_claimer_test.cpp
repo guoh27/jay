@@ -33,7 +33,7 @@ protected:
   }
 
   //
-  ~AddressClaimerTest() override{};
+  ~AddressClaimerTest() override = default;
 
   //
   void SetUp() override
@@ -164,7 +164,7 @@ TEST_F(AddressClaimerTest, Jay_Address_Claimer_Test)
   addr_mng.process(jay::frame::make_address_claim(
     jay::name{ jay::J1939_MAX_UNICAST_ADDR }, static_cast<std::uint8_t>(jay::J1939_MAX_UNICAST_ADDR)));
 
-  io.run_for(std::chrono::milliseconds(1000));// Give timeout time to trigger
+  io.run_for(std::chrono::milliseconds(260));// Give timeout time to trigger
   io.restart();
 
   ASSERT_TRUE(j1939_network.full());

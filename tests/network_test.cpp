@@ -81,19 +81,19 @@ TEST(Jay_Network_Test, Jay_Network_Insert_Test)
   ASSERT_TRUE(j1939_network.insert(controller_3, address_2));
   ASSERT_EQ(j1939_network.get_address(controller_3), address_2);
   ASSERT_EQ(j1939_network.get_address(controller_2), jay::J1939_IDLE_ADDR);
-  ASSERT_EQ(j1939_network.address_count(), 1);
+  ASSERT_EQ(j1939_network.address_count(), 2);
   ASSERT_EQ(j1939_network.name_count(), 3);
 
   // Inserting address null
   ASSERT_TRUE(j1939_network.insert(controller_4, jay::J1939_IDLE_ADDR));
   ASSERT_EQ(j1939_network.get_address(controller_4), jay::J1939_IDLE_ADDR);
-  ASSERT_EQ(j1939_network.address_count(), 1);
+  ASSERT_EQ(j1939_network.address_count(), 2);
   ASSERT_EQ(j1939_network.name_count(), 4);
 
   // Inserting existing with global address should not change anything
   ASSERT_FALSE(j1939_network.insert(controller_3, jay::J1939_NO_ADDR));
   ASSERT_EQ(j1939_network.get_address(controller_3), address_2);
-  ASSERT_EQ(j1939_network.address_count(), 1);
+  ASSERT_EQ(j1939_network.address_count(), 2);
   ASSERT_EQ(j1939_network.name_count(), 4);
 }
 
@@ -114,15 +114,13 @@ TEST(Jay_Network_Test, Jay_Network_Search_Test)
   jay::network j1939_network{ "vcan0" };
   ASSERT_FALSE(j1939_network.full());
 
-  jay::name controller{ 200 };
-  controller.self_config_address(1);
+  jay::name_t controller{ 200 };
   uint8_t address = 100;
 
-  jay::name ctrl{ 100 };
-  ctrl.self_config_address(1);
+  jay::name_t ctrl{ 100 };
   for (uint8_t i = 0; i < jay::J1939_IDLE_ADDR; i++) {// Fill network
     ASSERT_TRUE(j1939_network.insert(ctrl, i));
-    ctrl = jay::name_t(ctrl) + 1;
+    ctrl++;
   }
 
   auto name = jay::name(0);
