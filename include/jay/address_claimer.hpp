@@ -147,8 +147,15 @@ public:
   {
     if (!state_machine_.is(boost::sml::state<jay::address_state_machine::st_no_address>)) { return; }
 
-    boost::asio::post(context_, [this, preferred_address]() -> void {
+    // Re-enter no address state and send address request
+    boost::asio::post(context_, [this]() -> void {
       state_machine_.process_event(jay::address_state_machine::ev_restart{});
+    });
+
+    // Delay address claiming so request can propagate on the bus
+    timeout_timer_.expires_from_now(boost::posix_time::millisec(200));
+    timeout_timer_.async_wait([this, preferred_address](auto error_code) {
+      if (error_code) { return on_fail("start_claim_delay", error_code); }
       state_machine_.process_event(jay::address_state_machine::ev_start_claim{ preferred_address });
     });
   }
