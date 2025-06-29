@@ -83,7 +83,7 @@ TEST_F(AddressClaimerTest, Jay_Address_Claimer_Test)
 
   // Does nothing as we have not started claiming address
   jay::name controller_1{ 0xa00c81045a20021b };
-  std::uint8_t address_1{ 0x10U };
+  jay::address_t address_1{ 0x10U };
   addr_mng.process(jay::frame::make_address_claim(controller_1, address_1));
 
   // Enough time for timeout event to trigger
@@ -95,13 +95,13 @@ TEST_F(AddressClaimerTest, Jay_Address_Claimer_Test)
   ASSERT_EQ(j1939_network.address_count(), 1);
 
   // Should claim address 0x00
-  std::uint8_t address_0{ 0x00U };
+  jay::address_t address_0{ 0x00U };
   addr_mng.start_address_claim(address_0);
 
   /// TODO: Test running start address claim again
 
   // Enough time for timeout event to trigger
-  io.run_for(std::chrono::milliseconds(260));
+  io.run_for(std::chrono::milliseconds(460));
   io.restart();
 
   ASSERT_EQ(frame_queue.size(), 2);

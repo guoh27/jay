@@ -95,7 +95,7 @@ public:
    */
   struct st_claiming
   {
-    std::uint8_t address{ J1939_NO_ADDR };
+    jay::address_t address{ J1939_NO_ADDR };
   };
 
   /**
@@ -103,7 +103,7 @@ public:
    */
   struct st_has_address
   {
-    std::uint8_t address{ J1939_NO_ADDR };
+    jay::address_t address{ J1939_NO_ADDR };
   };
 
   struct st_address_lost
@@ -119,7 +119,7 @@ public:
    */
   struct ev_start_claim
   {
-    std::uint8_t pref_address{};
+    jay::address_t pref_address{};
   };
 
   /**
@@ -127,8 +127,8 @@ public:
    */
   struct ev_address_claim
   {
-    std::uint64_t name{};
-    std::uint8_t address{};
+    jay::name_t name{};
+    jay::address_t address{};
   };
 
   /**
@@ -136,7 +136,7 @@ public:
    */
   struct ev_address_request
   {
-    std::uint8_t destination_address{ jay::J1939_NO_ADDR };
+    jay::address_t destination_address{ jay::J1939_NO_ADDR };
   };
 
   /**
@@ -210,7 +210,7 @@ private:
    * @return false if addresses are not the same
    * @return true if addresses are the same
    */
-  bool address_conflict(std::uint8_t l_address, std::uint8_t r_address) const { return l_address == r_address; }
+  bool address_conflict(jay::address_t l_address, jay::address_t r_address) const { return l_address == r_address; }
 
   /**
    * @brief Checks if addresses change is required
@@ -220,7 +220,7 @@ private:
    * @return false if addresses does not conflict or if local name has priority
    * @return true if addresses conflict and local name does not have priority
    */
-  bool address_change_required(jay::name name, std::uint8_t l_address, std::uint8_t r_address) const
+  bool address_change_required(jay::name name, jay::address_t l_address, jay::address_t r_address) const
   {
     return address_conflict(l_address, r_address) && !address_priority(name);
   }
@@ -558,7 +558,7 @@ private:
    * @brief Sends an address claim to on frame callback
    * @param address to claim
    */
-  void send_address_claim(std::uint8_t address) const
+  void send_address_claim(jay::address_t address) const
   {
     if (callbacks_.on_address_claim) { callbacks_.on_address_claim(name_, address); }
   }

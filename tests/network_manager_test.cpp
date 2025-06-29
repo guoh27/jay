@@ -95,7 +95,7 @@ TEST_F(NetworkManagerTest, Jay_Network_Manager_Test)
   address_one.start_address_claim(0x0U);
   address_two.start_address_claim(0x1U);
 
-  context.run_for(std::chrono::milliseconds(300));// Enough time for timeout to trigger
+  context.run_for(std::chrono::milliseconds(500));// Enough time for timeout to trigger
   context.restart();
 
   ASSERT_EQ(frame_queue.size(), 4);

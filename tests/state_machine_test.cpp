@@ -28,7 +28,7 @@ protected:
   StateMachineTest()
   {
     /// Cout used for debugging
-    addr_claimer.set_callbacks(jay::address_state_machine::callbacks{ [this](jay::name name, uint8_t address) -> void {
+    addr_claimer.set_callbacks(jay::address_state_machine::callbacks{ [this](jay::name name, jay::address_t address) -> void {
                                                                        // std::cout << std::hex << (name) << " gained
                                                                        // address: " << std::hex << address <<
                                                                        // std::endl;
@@ -41,7 +41,7 @@ protected:
       [this]() -> void {
         // std::cout << std::hex << name << " starting claim" << std::endl;
       },
-      [this](jay::name name, std::uint8_t address) -> void {
+      [this](jay::name name, jay::address_t address) -> void {
         // std::cout << std::hex << name << " claiming address: " << std::hex << address << std::endl;
         claim_queue.push({ name, address });
       },
@@ -61,7 +61,7 @@ protected:
   void SetUp() override
   {
     // Clear queues
-    claim_queue = std::queue<std::pair<jay::name, std::uint8_t>>{};
+    claim_queue = std::queue<std::pair<jay::name, jay::address_t>>{};
     cannot_claim_queue = std::queue<jay::name>{};
   }
 
@@ -74,9 +74,9 @@ public:
     n.self_config_address(1);
     return n;
   }();
-  uint8_t address{ 0xAAU };
+  jay::address_t address{ 0xAAU };
   jay::network j1939_network{ "vcan0" };
-  std::queue<std::pair<jay::name, std::uint8_t>> claim_queue{};
+  std::queue<std::pair<jay::name, jay::address_t>> claim_queue{};
   std::queue<jay::name> cannot_claim_queue{};
 
   jay::address_state_machine addr_claimer{ local_name };

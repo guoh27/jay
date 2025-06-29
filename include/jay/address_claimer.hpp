@@ -119,7 +119,7 @@ public:
    * @param destination_address
    * @param address_claimed
    */
-  inline void process_claim(const jay::name name, const std::uint8_t address_claimed)
+  inline void process_claim(const jay::name name, const jay::address_t address_claimed)
   {
     if (!network_.insert(name, address_claimed)) {
       if (on_error_) { on_error_("on_frame_address_claim", boost::asio::error::address_in_use); }
@@ -133,7 +133,7 @@ public:
    *
    * @param destination_address
    */
-  void process_request(const std::uint8_t destination_address = J1939_NO_ADDR)
+  void process_request(const jay::address_t destination_address = J1939_NO_ADDR)
   {
     address_request(jay::address_state_machine::ev_address_request{ destination_address });
   }
@@ -143,7 +143,7 @@ public:
    * @param preferred_address to claim
    * @note event is posted to context
    */
-  void start_address_claim(std::uint8_t preferred_address)
+  void start_address_claim(jay::address_t preferred_address)
   {
     if (!state_machine_.is(boost::sml::state<jay::address_state_machine::st_no_address>)) { return; }
 
@@ -193,7 +193,7 @@ private:
    * @param name of controller in state machine
    * @param address claimed by state machine
    */
-  void on_address(jay::name name, std::uint8_t address)
+  void on_address(jay::name name, jay::address_t address)
   {
     network_.insert(name, address);
     if (on_address_) { on_address_(name, address); }
@@ -231,7 +231,7 @@ private:
    * @param name of controller in state machine
    * @param address to claim
    */
-  void on_address_claim(jay::name name, std::uint8_t address)
+  void on_address_claim(jay::name name, jay::address_t address)
   {
     if (on_frame_) on_frame_(jay::frame::make_address_claim(name, address));
   }
@@ -334,7 +334,7 @@ private:
   boost::asio::deadline_timer timeout_timer_;
 
   // Called when a local controller has claimed an address
-  std::function<void(jay::name, std::uint8_t)> on_address_;
+  std::function<void(jay::name, jay::address_t)> on_address_;
   // Called when a local controller loses their claimed an address
   std::function<void(jay::name)> on_lose_address_;
   // Called when a claim frame or cannot claim frame needs to be sent

@@ -15,10 +15,10 @@ TEST(Jay_Network_Test, Jay_Network_Insert_Test)
 {
   std::string interface_name{ "vcan0" };
   jay::network j1939_network{ interface_name };
-  uint64_t controller_1{ 0xa00c81045a20021b };/// Temp hardware names 11532734601480897051
-  uint64_t controller_2{ 0xa00c810c5a20021b };/// Temp hardware names 11532734635840635419
-  uint8_t address_1{ 0x96 };
-  uint8_t address_2{ 0x97 };
+  jay::name_t controller_1{ 0xa00c81045a20021b };/// Temp hardware names 11532734601480897051
+  jay::name_t controller_2{ 0xa00c810c5a20021b };/// Temp hardware names 11532734635840635419
+  jay::address_t address_1{ 0x96 };
+  jay::address_t address_2{ 0x97 };
 
   ASSERT_TRUE(j1939_network.insert(controller_1, address_1));
   ASSERT_TRUE(j1939_network.insert(controller_2, address_2));
@@ -74,8 +74,8 @@ TEST(Jay_Network_Test, Jay_Network_Insert_Test)
   ASSERT_EQ(j1939_network.address_count(), 2);
   ASSERT_EQ(j1939_network.name_count(), 2);
 
-  uint64_t controller_3{ controller_2 - 1 };
-  uint64_t controller_4{ controller_2 + 1 };
+  jay::name_t controller_3{ controller_2 - 1 };
+  jay::name_t controller_4{ controller_2 + 1 };
 
   // Controller 3 is smaller an can take address
   ASSERT_TRUE(j1939_network.insert(controller_3, address_2));
@@ -151,7 +151,7 @@ TEST(Jay_Network_Test, Jay_Network_Get_Name_Set_Test)
   jay::network j1939_network{ "vcan0" };
   std::vector<jay::name> names{ jay::name{ 0x1U }, jay::name{ 0x2U }, jay::name{ 0x3U } };
 
-  uint8_t address = 0x80;
+  jay::address_t address = 0x80;
   for (auto n : names) { j1939_network.insert(n, address++); }
 
   auto name_set = j1939_network.get_name_set();

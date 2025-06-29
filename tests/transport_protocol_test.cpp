@@ -17,13 +17,13 @@ public:
     return true;
   }
 
-  std::uint8_t source_address() const override { return src_sa_; }
-  void source_address(std::uint8_t sa) { src_sa_ = sa; }
+  jay::address_t source_address() const override { return src_sa_; }
+  void source_address(jay::address_t sa) { src_sa_ = sa; }
 
   std::vector<jay::frame> sent_frames;
 
 private:
-  std::uint8_t src_sa_{ 0xAA };
+  jay::address_t src_sa_{ 0xAA };
 };
 
 class FailAfterFirstBus : public MockBus
