@@ -98,7 +98,9 @@ TEST_F(NetworkManagerTest, Jay_Network_Manager_Test)
   context.run_for(std::chrono::milliseconds(300));// Enough time for timeout to trigger
   context.restart();
 
-  ASSERT_EQ(frame_queue.size(), 2);
+  ASSERT_EQ(frame_queue.size(), 4);
+  frame_queue.pop();
+  frame_queue.pop();
   frame_queue.pop();
   frame_queue.pop();
 

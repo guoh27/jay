@@ -104,10 +104,15 @@ TEST_F(AddressClaimerTest, Jay_Address_Claimer_Test)
   io.run_for(std::chrono::milliseconds(260));
   io.restart();
 
-  ASSERT_EQ(frame_queue.size(), 1);
+  ASSERT_EQ(frame_queue.size(), 2);
 
-  /// Address claim frame (modified: expect ADDRESS_CLAIM instead of REQUEST)
-  frame = frame_queue.back();
+  frame = frame_queue.front();
+  ASSERT_EQ(frame.header.pdu_format(), jay::PF_REQUEST);
+  ASSERT_EQ(frame.header.pdu_specific(), jay::J1939_NO_ADDR);
+  ASSERT_EQ(frame.header.source_address(), jay::J1939_IDLE_ADDR);
+  frame_queue.pop();
+
+  frame = frame_queue.front();
   ASSERT_EQ(frame.header.pdu_format(), jay::PF_ADDRESS_CLAIM);
   ASSERT_EQ(frame.header.pdu_specific(), jay::J1939_NO_ADDR);
   ASSERT_EQ(frame.header.source_address(), address_0);

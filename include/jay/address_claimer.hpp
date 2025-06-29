@@ -148,6 +148,7 @@ public:
     if (!state_machine_.is(boost::sml::state<jay::address_state_machine::st_no_address>)) { return; }
 
     boost::asio::post(context_, [this, preferred_address]() -> void {
+      state_machine_.process_event(jay::address_state_machine::ev_restart{});
       state_machine_.process_event(jay::address_state_machine::ev_start_claim{ preferred_address });
     });
   }

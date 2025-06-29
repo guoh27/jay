@@ -150,6 +150,14 @@ public:
   {
   };
 
+  /**
+   * @brief Event used to re-enter the no address state so that on_entry actions
+   *        can be triggered manually
+   */
+  struct ev_restart
+  {
+  };
+
 private:
   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
   //@                             Guards                             @//
@@ -688,6 +696,7 @@ public:
       state<st_no_address> + event<ev_address_request>[guard_is_global_address_req{}] / act_send_cannot_claim{},
       state<st_no_address> + event<ev_start_claim>[guard_address_available{}] / act_set_pref_address{} = state<st_claiming>,
       state<st_no_address> + event<ev_start_claim>[guard_no_address_available{}] / act_send_cannot_claim{},
+      state<st_no_address> + event<ev_restart> = state<st_no_address>,
 
       // Claiming
       state<st_claiming> + on_entry<_> / act_begin_claiming_address{},
