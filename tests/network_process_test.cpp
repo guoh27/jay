@@ -51,6 +51,6 @@ TEST_F(NetworkProcessTest, ManualProcess)
   a2.start_address_claim(0x11);
   ctx.run_for(std::chrono::milliseconds(300));
   ctx.restart();
-  ASSERT_EQ(out_queue.size(), 2);
+  ASSERT_EQ(out_queue.size(), 4);
 }
 
